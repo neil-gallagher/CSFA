@@ -1,32 +1,28 @@
-function modelRefit = projectCSFA(xFft,origModel,dataOpts,trainOpts,initScores)
+function modelRefit = projectCSFA(xFft,origModel,s,trainOpts,initScores)
 % projectCSFA
 %   Projects a dataset onto the space of factors for a
 %   cross-spectral factor analysis (CSFA) model
 %   INPUTS
 %   xFft: fourier transform of preprocessed data. NxAxW array. A is
-%     the # of areas. N=number of frequency points per
+%     the # of channels. N=number of frequency points per
 %     window. W=number of time windows.
 %   origModel: CSFA model containing factors onto which you desire
-%     to project a new dataset (xFft)
-%   dataOpts: struct containing parameters describing the data
+%     to project the dataset (xFft)
+%   s: frequency space (Hz) labels of fourier transformed data
+%   trainOpts: (optional) structure of options for the learning algorithm. All
+%       non-optional fields not included in the structure passed in will be
+%       filled with a default value. See the fillDefaultTopts function for
+%       default values.
 %     FIELDS
-%     highFreq/lowFreq: boundaries of frequencies considered by
-%       the model
-%     s: vector of frequencies corresponding to the first dimension
-%       of xFft
-%   trainOpts: (optional) structure containing parameters for the
-%     training algorithm
-%       FIELDS
-%       iters: total number of iteration
-%       evalInterval: interval at which to evaluate likelihood and save a
-%           checkpoint.
-%       convThresh, convClock: training stops if the objective function
-%           does not increase by 'convThresh' after 'convClock'
-%           evaluations of the log likelihood.
-%       algorithm: function handle to the desired gradient descent
-%           algorithm for model learning. 
-%           Example: [evals,trainModels] = trainOpts.algorithm(labels.s,...
-%                          xFft(:,:,sets.train),model,trainOpts,chkptFile);
+%     iters: maximum number of training iterations
+%     evalInterval: interval at which to evaluate objective.
+%     convThresh, convClock: convergence criterion parameters. training stops if
+%         the objective function does not increase by 'convThresh' after
+%         'convClock' evaluations of the objective function.
+%     algorithm: function handle to the desired gradient descent
+%         algorithm for model learning. 
+%         Example: [evals,trainModels] = trainOpts.algorithm(labels.s,...
+%                        xFft(:,:,sets.train),model,trainOpts,chkptFile);
 %   initScores: (optional) LxW of scores to initialize
 %     projection. L = number of factors. W = last dimension of
 %     xFft. NaN entries in initScores will be replaced with a
@@ -54,7 +50,7 @@ modelRefitOpts.maxW = min(1e3,modelRefitOpts.W);
 
 % initialize new model
 kernels = origModel.LMCkernels;
-modelRefit = GP.CSFA(modelRefitOpts,dataOpts,kernels);
+modelRefit = GP.CSFA(modelRefitOpts,kernels);
 modelRefit.updateKernels = false;
 if nargin >= 5
   scoresGiven = ~isnan(initScores);
@@ -62,7 +58,7 @@ if nargin >= 5
 end
 
 % project new data onto factors
-trainOpts.algorithm(dataOpts.s,xFft,modelRefit,trainOpts);
+trainOpts.algorithm(s,xFft,modelRefit,trainOpts);
 end
 
 function modelOpts = extractModelOpts(model)
@@ -71,4 +67,6 @@ function modelOpts = extractModelOpts(model)
   modelOpts.C = model.C;
   modelOpts.R = model.LMCkernels{1}.coregs.B{1}.R;
   modelOpts.eta = model.eta;
+  modelOpts.lowFreq = model.freqBounds(1);
+  modelOpts.highFreq = model.freqBounds(2);
 end

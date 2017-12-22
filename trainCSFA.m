@@ -1,124 +1,125 @@
 function trainCSFA(loadFile,saveFile,modelOpts,trainOpts,chkptFile)
 % trainCSFA
-%   Trains a cross-spectral factor analysis (CSFA) model to model
-%   LFP data averaged over each recording area. The
-%   model can be combined with a discriminitive supervised model. Must
-%   run saveTrainRuns afterward to consolidate training results into file
-%   with data
+%   Trains a cross-spectral factor analysis (CSFA) model of the given LFP data. 
+%   Generally, the data are given as averaged signal over each recording area,
+%   divided into time windows. Learns a set of factors that describe the dataset
+%   well, and models each window as a linear sum of contributions from each
+%   factor. The model can be combined with supervised classifier in order to
+%   force a set of the factors to be predictive of desired sid information. Run
+%   the saveTrainRuns function after this to consolidate training results into
+%   one file. For more details on the model refer to the following publication:
+%   N. Gallagher, K.R. Ulrich, K. Dzirasa, L. Carin, and D.E. Carlson,
+%     "Cross-Spectral Factor Analysis", Advances in Neural Information
+%     Processing Systems 30, pp. 6845-6855, 2017.
 %   INPUTS
-%   loadFile: path of file containing preprocessed data. Should contain
-%       xFft, dataOpts and labels variables, described below.
-%   saveFile: name of '.mat' file to which the CSFA model is
-%       ultimately saved. If you wish to control the division of
+%   loadFile: path to '.mat' file containing preprocessed data. Must contain
+%        variables named xFft and labels variables, described below.
+%   saveFile: path to '.mat' file to which the CSFA model will
+%       ultimately be saved. If you wish to control the division of
 %       data into train/validation/test sets, this file should be
 %       already initialized with a sets variable, described below.
-%       All models saved to this file should have the same sets.
-%   modelOpts (optional): Indicates  parameters of the CSFA model.
+%       All models saved to this file should have the same validation sets.
+%   modelOpts: (optional) Indicates  parameters of the CSFA model. All
+%       non-optional fields not included in the structure passed in will be
+%       filled with a default value.
 %       FIELDS
-%       discrimModel: string indicating the discriminitve model, if any,
-%           that is combined with the GP model. options are
-%           'none','svm', or 'logistic'; this can also be a
-%           function handle to a custom classifier ?!?
-%       L: number of factors
-%       Q: number of spectral gaussians components per factor
-%       R: rank of coregionalization matrix
-%       eta: precision of additive gaussian noise
-%       description (optional): description of model
-%       kernel (optional): CSFA model to initialize model for
-%           training with
+%       discrimModel: string indicating the supervised classifier, if any,
+%           that is combined with the CSFA model. options are
+%           'none','svm','logistic', or 'multinomial'. Default: 'none'
+%       L: number of factors. Default: 10
+%       Q: number of spectral gaussian components per factor. Default: 3
+%       R: rank of coregionalization matrix. Default: 2
+%       eta: precision of additive gaussian noise. Default: 5
+%       lowFreq: lower bound on spectral frequencies incorporated in the model.
+%           Default: 1
+%       highFreq: upper bound on spectral frequencies incorporated in the model.
+%           Default: 50
+%       description: (optional) string description of model
+%       kernel: (optional) CSFA model object to initialize new model for
+%           training
 %       (The following are used if discrimModel is set to anything
 %       other than 'none')
+%       lambda: scalar ratio of the 'weight' on the classifier loss
+%           objective compared to the CSFA model likelihood objective
+%       target: string indicating the field of labels.windows to be used as
+%           the target variable to be explained by the classifier
 %       dIdx: boolean vector of indicies for discriminitive
 %           factors
-%       lambda: scalar ratio of the 'weight' on the discriminitive
-%           objective compared to the generative likelihood
-%           objective
-%       target: string indicating the field of labels.windows to be used as
-%           the target variable to be explained by the discriminitive model 
-%       mixed(optional): boolean indicating whether to have mixed intercept
+%       mixed: (optional) boolean indicating whether to have mixed intercept
 %           model for multiple groups
-%   trainOpts (optional): structure of options for the learning
-%       algorithm
+%   trainOpts: (optional) structure of options for the learning algorithm. All
+%       non-optional fields not included in the structure passed in will be
+%       filled with a default value. See the fillDefaultTopts function for
+%       default values.
 %       FIELDS
-%       iters: total number of iteration
-%       evalInterval(2): interval at which to evaluate likelihood and save a
-%           checkpoint. evalInterval2 corresponds to score projection
+%       iters: maximum number of training iterations
+%       evalInterval(2): interval at which to evaluate objective. evalInterval2
+%           controls the interval for score learning
 %           following initial kernel learning.
 %       saveInterval: interval at which to save intermediate models during
 %           training. 
-%       convThresh(2), convClock(2): training stops if the objective function
-%           does not increase by 'convThresh' after 'convClock'
-%           evaluations of the log likelihood. convThresh2 and
-%           convClock2 correspond to score projection following kernel
+%       convThresh(2), convClock(2): convergence criterion parameters. training
+%           stops if the objective function does not 
+%           increase by a value of at least (convThresh) after (convClock)
+%           evaluations of the objective function. convThresh2 and
+%           convClock2 correspond to score learning following kernel
 %           learning.
 %       algorithm: function handle to the desired gradient descent
-%           algorithm for model learning. 
+%           algorithm for model learning. Stored in +algorithms/ 
 %           Example: [evals,trainModels] = trainOpts.algorithm(labels.s,...
 %                          xFft(:,:,sets.train),model,trainOpts,chkptFile);
 %       stochastic: boolean indicating to train using mini-batches
 %       batchSize: (only used if stochastic = true) mini-batch size
 %           for stochastic algorithms 
-%       projFinal: boolean. only project scores from the final model
-%           (obtained after all training iterations)
-%   chkptFile (optional): path of a file containing checkpoint information
-%       for training to start from
+%       projAll: boolean. If false, only learns scores from the final model
+%           (obtained after all training iterations), rather than for each
+%           intermediate model as well.
+%   chkptFile: (optional) path of a file containing checkpoint information
+%       for training to start from. For use if training had to be terminated
+%       before completion.
 %   LOADED VARIABLES
-%   dataOpts: Data preprocessing options.
-%       FIELDS
-%       highFreq/lowFreq: boundaries of frequencies considered by
-%       the model
-%       subSampFact: subsampling factor
-%       normWindows: boolean indication whether to normalize
-%           individual windows. If false, dataset is normalized as
-%           a whole, and individual windows are still mean
-%           subtracted.
+%   (from loadFile)
 %   xFft: fourier transform of preprocessed data. NxAxW array. A is
 %       the # of areas. N=number of frequency points per
 %       window. W=number of time windows.
 %   labels: Structure containing labeling infomation for data
 %       FIELDS
-%       s: frequency space labels of fourier transformed data
-%       target: boolean vector giving binary class labels for
-%           discriminitive models
+%       s: frequency space (Hz) labels of fourier transformed data
 %       group: vector giving group labels for mixed intercept model (see
 %           modelOpts entry)
-%   sets (optionally loaded from loadFile): structure containing
+%   (optionally loaded from saveFile)
+%   sets: structure containing
 %       train/validation set labels.
 %       FIELDS
 %       train: logical vector indicating windows in xFft to be used
 %           in training set
-%       val(optional): logical vector indicating window to be used in
+%       val: (optional) logical vector indicating window to be used in
 %           validation
 %       datafile: path to file containing data used to train model
-%       test (optional): logical vector indicating windows for
+%       test: (optional) logical vector indicating windows for
 %           testing
-%       description (optional): describes validation set scheme
-% Example: TrainCSFA('data/dataStore.mat','data/Mhold.mat',[],[],'data/chkpt_81LNf_Mhold.mat')
+%       description: (optional) describes validation set scheme
+%
+% Example1: TrainCSFA('data/dataStore.mat','data/modelFile.mat',mOpts,tOpts)
+% Example2: TrainCSFA('data/dataStore.mat','data/Mhold.mat',[],[],'data/chkpt_81LNf_Mhold.mat')
 
+  % Add .mat extension if filenames don't already include them
   saveFile = addExt(saveFile);
   loadFile = addExt(loadFile);
-  
+
+  % initialize options structures if not given as inputs
   if nargin < 4
     trainOpts = [];
   end
   if nargin < 3
     modelOpts = [];
   end
-  
-  load(loadFile,'xFft','dataOpts','labels')
+
+  % load data and associated info
+  load(loadFile,'xFft','labels')
   nWin = size(xFft,3);
 
-  % validation set options
-  if exist(saveFile,'file')
-    load(saveFile,'sets')
-    % allow user to set sets.train to true for training set
-    % to include all data
-    if sets.train == true
-      sets.train = true(1,nWin);
-    end
-  else
-    sets = randomSplit(nWin,loadFile);
-  end
+  sets = loadSets(saveFile,loadFile,nWin);
   
   if nargin < 5
     % initialize matfile for checkpointing
@@ -137,79 +138,55 @@ function trainCSFA(loadFile,saveFile,modelOpts,trainOpts,chkptFile)
   end
 
   % fill in default options and remaining parameters
-  trainOpts = fillDefaultTopts(trainOpts);
-  modelOpts = fillDefaultMopts(modelOpts);
   modelOpts.C = size(xFft,2); % number of signals
   modelOpts.W = sum(sets.train);    % # of windows
-  if ~isfield(modelOpts,'maxW')
-    modelOpts.maxW = min(modelOpts.W,1e4);
-  end
-  if ~isfield(modelOpts,'discrimModel')
-    modelOpts.discrimModel = 'none';
-  end
+  modelOpts = fillDefaultMopts(modelOpts);
+  trainOpts = fillDefaultTopts(trainOpts);
 
+  %% Kernel learning
   % train kernels if they haven't been loaded from chkpt file
   if ~exist('projModels','var') && (~exist('trainIter','var') || trainIter~=Inf)
     
-    % Initialize model
     if exist('trainModels','var') % implies chkptFile was loaded
       model = trainModels(end);
     else
-      if isa(modelOpts.discrimModel,'function_handle')
-        target = modelOpts.target;
-        model = GP.dCSFA(modelOpts,dataOpts,labels.windows.(target)(sets.train));
-      else
-        switch modelOpts.discrimModel
-          case 'none'
-            model = GP.CSFA(modelOpts,dataOpts);
-          case {'svm','logistic','multinomial'}
-            target = modelOpts.target;
-            if isfield(modelOpts,'mixed') && modelOpts.mixed
-              model = GP.dCSFA(modelOpts,dataOpts,labels.windows.(target)(sets.train),...
-                               labels.group(sets.train));
-            else
-              model = GP.dCSFA(modelOpts,dataOpts,labels.windows.(target)(sets.train));
-            end
-          otherwise
-            warning(['Disciminitive model indicated by modelOpts.discrimModel is '...
-                     'not valid. Model will be trained using GP generative model only.'])
-            model = GP.CSFA(modelOpts,dataOpts);
-        end
-      end
+      model = initModel(modelOpts,labels,sets)
     end
     
-    % update model via resilient backpropagation
+    % update model via gradient descent
     [evals, trainModels] = trainOpts.algorithm(labels.s,xFft(:,:,sets.train),model,...
                                             trainOpts,chkptFile);  
     fprintf('Kernel Training Complete\n')
   end
 
+  %% Score learning
+  % Fix kernels and learn scores to convergence
+  
   % initialize variables for projection
   nModels = numel(trainModels);
   if exist('projModels','var')
-    % happens if there are checkpointed test models
+    % happens if there are checkpointed projection models
     k = nModels - sum(~isempty(projModels));
     initScores = projModels(k+1).scores;
   else
     k = nModels;
 
-    % initialize projected scores with trainin set scores
+    % initialize projected scores with training set scores
     initScores = nan(modelOpts.L,nWin);
     initScores(:,sets.train) = trainModels(k).scores;
   end
   
-  dataOpts.s = labels.s;
   while k >= lastTrainIdx(nModels,trainOpts.projectAll)
     if isa(trainModels(k),'GP.CSFA')
       thisTrainModel = trainModels(k);
     else
       thisTrainModel = trainModels(k).kernel;
     end
-    % update model via resilient backpropagation (requires data.y as input)
+    
     a = tic;
-    modelRefit = projectCSFA(xFft,thisTrainModel,dataOpts,trainOpts,...
+    modelRefit = projectCSFA(xFft,thisTrainModel,labels.s,trainOpts,...
         initScores);
-    fprintf('Trained holdout model %d: %.1fs\n',k,toc(a))
+    fprintf('Projected model %d: %.1fs\n',k,toc(a))
     projModels(k) = modelRefit.copy;
 
     save(chkptFile,'projModels','trainModels','evals',...
@@ -221,9 +198,55 @@ function trainCSFA(loadFile,saveFile,modelOpts,trainOpts,chkptFile)
   end
 end
 
+function sets = loadSets(saveFile,loadFile,nWin)
+% load validation set options
+
+if exist(saveFile,'file')
+  load(saveFile,'sets')
+% allow user to set sets.train to true for training set
+% to include all data
+  if sets.train == true
+    sets.train = true(1,nWin);
+  end
+else
+  sets.train = false(1,nWin);
+  sets.train(randperm(nWin,floor(0.8*nWin))) = 1;
+  sets.test = ~sets.train;
+  sets.description = '80/20 split';
+  sets.datafile = loadFile;
+end
+end
+
+function model = initModel(modelOpts,labels,sets)
+% initialize CSFA or dCSFA model
+
+if isa(modelOpts.discrimModel,'function_handle')
+  target = modelOpts.target;
+  model = GP.dCSFA(modelOpts,labels.windows.(target)(sets.train));
+else
+  switch modelOpts.discrimModel
+    case 'none'
+      model = GP.CSFA(modelOpts);
+    case {'svm','logistic','multinomial'}
+      target = modelOpts.target;
+      if isfield(modelOpts,'mixed') && modelOpts.mixed
+        model = GP.dCSFA(modelOpts,labels.windows.(target)(sets.train),...
+                         labels.group(sets.train));
+      else
+        model = GP.dCSFA(modelOpts,labels.windows.(target)(sets.train));
+      end
+    otherwise
+      warning(['Disciminitive model indicated by modelOpts.discrimModel is '...
+               'not valid. Model will be trained using GP generative model only.'])
+      model = GP.CSFA(modelOpts);
+  end
+end
+end
+
+function chkptFile = generateCpFilename(saveFile)
 % generate checkpoint file name that wont overlap with other checkpoint
 % files for same dataset
-function chkptFile = generateCpFilename(saveFile)
+
   % generate random string
   symbols = ['a':'z' 'A':'Z' '0':'9'];
   ST_LENGTH = 5;
@@ -236,19 +259,20 @@ function chkptFile = generateCpFilename(saveFile)
   chkptFile = [saveFile(1:idx(end)),st,saveFile(idx(end)+1:end)];
 end
 
-function sets = randomSplit(nWin,loadFile)
-    sets.train = false(1,nWin);
-    sets.train(randperm(nWin,floor(0.8*nWin))) = 1;
-    sets.test = ~sets.train;
-    sets.description = '80/20 split';
-    sets.datafile = loadFile;
-end
-
 function modelOpts = fillDefaultMopts(modelOpts)
-  if ~isfield(modelOpts,'L'), modelOpts.L = 21; end
-  if ~isfield(modelOpts,'Q'), modelOpts.Q = 3; end
-  if ~isfield(modelOpts,'R'), modelOpts.R = 2; end
-  if ~isfield(modelOpts,'eta'), modelOpts.eta = 5; end
+% fill in default model options
+if ~isfield(modelOpts,'L'), modelOpts.L = 10; end
+if ~isfield(modelOpts,'Q'), modelOpts.Q = 3; end
+if ~isfield(modelOpts,'R'), modelOpts.R = 2; end
+if ~isfield(modelOpts,'eta'), modelOpts.eta = 5; end
+if ~isfield(modelOpts,'lowFreq'), modelOpts.lowFreq = 1; end
+if ~isfield(modelOpts,'highFreq'), modelOpts.highFreq = 50; end
+if ~isfield(modelOpts,'maxW')
+  modelOpts.maxW = min(modelOpts.W,1e4);
+end
+if ~isfield(modelOpts,'discrimModel')
+  modelOpts.discrimModel = 'none';
+end
 end
 
 function filename = addExt(filename)

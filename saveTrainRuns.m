@@ -16,7 +16,7 @@ prefix = [];
 for i = 1:numel(pathPart)-1
   prefix = [prefix pathPart{i} matches{i}];
 end
-%%%%%cpFiles = dir([prefix 'chkpt_*' pathPart{end} '.mat']);
+
 cpFiles = dir([prefix 'chkpt_*' pathPart{end}]);
 N = numel(cpFiles);
 

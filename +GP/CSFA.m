@@ -19,10 +19,10 @@ classdef CSFA < handle & GP.spectrumPlots
   end
   
   methods
-    function self = CSFA(modelOpts,dataOpts,kernels)
+    function self = CSFA(modelOpts,kernels)
       if nargin > 0
         VAR_LB = 0.5^2; VAR_UB = 25^2; % spectral guassian variance bounds
-        lowF = dataOpts.lowFreq; highF = dataOpts.highFreq;
+        lowF = modelOpts.lowFreq; highF = modelOpts.highFreq;
         
         % set model parameters
         self.L = modelOpts.L;

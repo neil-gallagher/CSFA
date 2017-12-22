@@ -16,7 +16,7 @@ classdef dCSFA < handle
   end
   
   methods
-    function self = dCSFA(modelOpts,dataOpts,labels,group)
+    function self = dCSFA(modelOpts,labels,group)
       if nargin > 0
         self.W = int64(modelOpts.W);
         self.C = modelOpts.C;
@@ -32,7 +32,7 @@ classdef dCSFA < handle
         if isfield(modelOpts,'kernel')
           self.kernel = modelOpts.kernel;
         else
-          self.kernel = GP.CSFA(modelOpts,dataOpts);
+          self.kernel = GP.CSFA(modelOpts);
         end
         
         if islogical(labels)

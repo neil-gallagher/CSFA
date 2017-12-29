@@ -47,6 +47,9 @@ function trainCSFA(loadFile,saveFile,modelOpts,trainOpts,chkptFile)
 %           factors
 %       mixed: (optional) boolean indicating whether to have mixed intercept
 %           model for multiple groups
+%       group: Only needed if mixed is set to 'true'. String indicating the
+%           field of labels.windows to be used as the group variable for a
+%           mixed intercept model
 %   trainOpts: (optional) structure of options for the learning algorithm. All
 %       non-optional fields not included in the structure passed in will be
 %       filled with a default value. See the fillDefaultTopts function for
@@ -85,8 +88,6 @@ function trainCSFA(loadFile,saveFile,modelOpts,trainOpts,chkptFile)
 %   labels: Structure containing labeling infomation for data
 %       FIELDS
 %       s: frequency space (Hz) labels of fourier transformed data
-%       group: vector giving group labels for mixed intercept model (see
-%           modelOpts entry)
 %   (optionally loaded from saveFile)
 %   sets: structure containing
 %       train/validation set labels.
@@ -230,8 +231,9 @@ else
     case {'svm','logistic','multinomial'}
       target = modelOpts.target;
       if isfield(modelOpts,'mixed') && modelOpts.mixed
+        group = modelOpts.group;
         model = GP.dCSFA(modelOpts,labels.windows.(target)(sets.train),...
-                         labels.group(sets.train));
+                         labels.windows.(group)(sets.train));
       else
         model = GP.dCSFA(modelOpts,labels.windows.(target)(sets.train));
       end

@@ -40,7 +40,7 @@ classdef CSFA < handle & GP.spectrumPlots
         self.scores = rand(self.L,modelOpts.W);
         
         % create and initialize L LMC kernels
-        if nargin < 3
+        if nargin < 2
           self.LMCkernels = cell(self.L,1);
           self.freqBounds = [lowF highF];
           for l = 1:self.L

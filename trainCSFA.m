@@ -1,6 +1,6 @@
 function trainCSFA(loadFile,saveFile,modelOpts,trainOpts,chkptFile)
 % trainCSFA
-%   Trains a cross-spectral factor analysis (CSFA) model of the given LFP data. 
+%   Trains a cross-spectral factor analysis (CSFA) model of the given LFP data.
 %   Generally, the data are given as averaged signal over each recording area,
 %   divided into time windows. Learns a set of factors that describe the dataset
 %   well, and models each window as a linear sum of contributions from each
@@ -8,7 +8,7 @@ function trainCSFA(loadFile,saveFile,modelOpts,trainOpts,chkptFile)
 %   force a set of the factors to be predictive of desired sid information. Run
 %   the saveTrainRuns function after this to consolidate training results into
 %   one file. For more details on the model refer to the following publication:
-%   N. Gallagher, K.R. Ulrich, K. Dzirasa, L. Carin, and D.E. Carlson,
+%   N. Gallagher, K.R. Ulrich, A. Talbot, K. Dzirasa, L. Carin, and D.E. Carlson,
 %     "Cross-Spectral Factor Analysis", Advances in Neural Information
 %     Processing Systems 30, pp. 6845-6855, 2017.
 %   INPUTS
@@ -60,20 +60,20 @@ function trainCSFA(loadFile,saveFile,modelOpts,trainOpts,chkptFile)
 %           controls the interval for score learning
 %           following initial kernel learning.
 %       saveInterval: interval at which to save intermediate models during
-%           training. 
+%           training.
 %       convThresh(2), convClock(2): convergence criterion parameters. training
-%           stops if the objective function does not 
+%           stops if the objective function does not
 %           increase by a value of at least (convThresh) after (convClock)
 %           evaluations of the objective function. convThresh2 and
 %           convClock2 correspond to score learning following kernel
 %           learning.
 %       algorithm: function handle to the desired gradient descent
-%           algorithm for model learning. Stored in +algorithms/ 
+%           algorithm for model learning. Stored in +algorithms/
 %           Example: [evals,trainModels] = trainOpts.algorithm(labels.s,...
 %                          xFft(:,:,sets.train),model,trainOpts,chkptFile);
 %       stochastic: boolean indicating to train using mini-batches
 %       batchSize: (only used if stochastic = true) mini-batch size
-%           for stochastic algorithms 
+%           for stochastic algorithms
 %       projAll: boolean. If false, only learns scores from the final model
 %           (obtained after all training iterations), rather than for each
 %           intermediate model as well.
@@ -104,29 +104,29 @@ function trainCSFA(loadFile,saveFile,modelOpts,trainOpts,chkptFile)
 % Example1: TrainCSFA('data/dataStore.mat','data/modelFile.mat',mOpts,tOpts)
 % Example2: TrainCSFA('data/dataStore.mat','data/Mhold.mat',[],[],'data/chkpt_81LNf_Mhold.mat')
 
-  % Add .mat extension if filenames don't already include them
-  saveFile = addExt(saveFile);
-  loadFile = addExt(loadFile);
+% Add .mat extension if filenames don't already include them
+saveFile = addExt(saveFile);
+loadFile = addExt(loadFile);
 
-  % initialize options structures if not given as inputs
-  if nargin < 4
+% initialize options structures if not given as inputs
+if nargin < 4
     trainOpts = [];
-  end
-  if nargin < 3
+end
+if nargin < 3
     modelOpts = [];
-  end
+end
 
-  % load data and associated info
-  load(loadFile,'xFft','labels')
-  nWin = size(xFft,3);
+% load data and associated info
+load(loadFile,'xFft','labels')
+nWin = size(xFft,3);
 
-  sets = loadSets(saveFile,loadFile,nWin);
-  
-  if nargin < 5
+sets = loadSets(saveFile,loadFile,nWin);
+
+if nargin < 5
     % initialize matfile for checkpointing
     chkptFile = generateCpFilename(saveFile)
     save(chkptFile,'modelOpts','trainOpts','sets')
-  else
+else
     % load info from checkpoint file
     chkptFile = addExt(chkptFile)
     cp = load(chkptFile,'-mat');
@@ -134,87 +134,99 @@ function trainCSFA(loadFile,saveFile,modelOpts,trainOpts,chkptFile)
     trainOpts = cp.trainOpts;
     if isfield(cp,'trainIter'), trainIter = cp.trainIter; end
     if isfield(cp,'trainModels'), trainModels = cp.trainModels; end
-    if isfield(cp,'projModels'), projModels = cp.projModels; end
+    if isfield(cp,'scores'), scores = cp.scores; end
     if isfield(cp,'evals'), evals = cp.evals; end
-  end
+end
 
-  % fill in default options and remaining parameters
-  modelOpts.C = size(xFft,2); % number of signals
-  modelOpts.W = sum(sets.train);    % # of windows
-  modelOpts = fillDefaultMopts(modelOpts);
-  trainOpts = fillDefaultTopts(trainOpts);
+% fill in default options and remaining parameters
+modelOpts.C = size(xFft,2); % number of signals
+modelOpts.W = sum(sets.train);    % # of windows
+modelOpts = fillDefaultMopts(modelOpts);
+trainOpts = fillDefaultTopts(trainOpts);
 
-  %% Kernel learning
-  % train kernels if they haven't been loaded from chkpt file
-  if ~exist('projModels','var') && (~exist('trainIter','var') || trainIter~=Inf)
+%% Kernel learning
+% train kernels if they haven't been loaded from chkpt file
+if ~exist('scores','var') && (~exist('trainIter','var') || trainIter~=Inf)
     
     if exist('trainModels','var') % implies chkptFile was loaded
-      model = trainModels(end);
+        model = trainModels(end);
     else
-      model = initModel(modelOpts,labels,sets)
+        model = initModel(modelOpts,labels,sets);
     end
     
     % update model via gradient descent
     [evals, trainModels] = trainOpts.algorithm(labels.s,xFft(:,:,sets.train),model,...
-                                            trainOpts,chkptFile);  
+        trainOpts,chkptFile);
     fprintf('Kernel Training Complete\n')
-  end
+end
 
-  %% Score learning
-  % Fix kernels and learn scores to convergence
-  
-  % initialize variables for projection
-  nModels = numel(trainModels);
-  if exist('projModels','var')
-    % happens if there are checkpointed projection models
-    k = nModels - sum(~isempty(projModels));
-    initScores = projModels(k+1).scores;
-  else
+%% Score learning
+% Fix kernels and learn scores to convergence
+
+% initialize variables for projection
+nModels = numel(trainModels);
+holdout = ~sets.train;
+if exist('scores','var')
+    % determine idx of last projected model if there are saved score projection
+    % models. Initialize learned scores with scores from previous model.
+    [~,~,k] = ind2sub([modelOpts.L,nWin,nModels],find(scores,1));
+    initScores = scores(:,holdout,k);
+    k=k-1;
+else
     k = nModels;
+    scores = zeros(modelOpts.L,nWin,nModels);
+    
+    nHoldout = sum(holdout);
+    initScores = nan(modelOpts.L,nHoldout);
+end
 
-    % initialize projected scores with training set scores
-    initScores = nan(modelOpts.L,nWin);
-    initScores(:,sets.train) = trainModels(k).scores;
-  end
-  
-  while k >= lastTrainIdx(nModels,trainOpts.projectAll)
+while k >= lastTrainIdx(nModels,trainOpts.projectAll)
+    % for each saved model learn scores for training & holdout sets
     if isa(trainModels(k),'GP.CSFA')
-      thisTrainModel = trainModels(k);
+        thisTrainModel = trainModels(k);
     else
-      thisTrainModel = trainModels(k).kernel;
+        thisTrainModel = trainModels(k).kernel;
     end
     
+    trainData = xFft(:,:,sets.train);
+    holdoutData = xFft(:,:,holdout);      
+    
     a = tic;
-    modelRefit = projectCSFA(xFft,thisTrainModel,labels.s,trainOpts,...
+    thisTrainModel = projectCSFA(trainData,thisTrainModel,labels.s,trainOpts,...
+        thisTrainModel.scores);
+    scores(:,sets.train,k) = thisTrainModel.scores;
+    
+    holdoutModel = projectCSFA(holdoutData,thisTrainModel,labels.s,trainOpts,...
         initScores);
+    scores(:,holdout,k) = holdoutModel.scores;
+
     fprintf('Projected model %d: %.1fs\n',k,toc(a))
-    projModels(k) = modelRefit.copy;
-
-    save(chkptFile,'projModels','trainModels','evals',...
-      'modelOpts','trainOpts','sets')
-
+    
+    save(chkptFile,'scores','trainModels','evals',...
+        'modelOpts','trainOpts','sets')
+    
     % initialize next model with scores from current model
-    initScores = modelRefit.scores;
+    initScores = holdoutModel.scores;
     k = k-1;
-  end
+end
 end
 
 function sets = loadSets(saveFile,loadFile,nWin)
 % load validation set options
 
 if exist(saveFile,'file')
-  load(saveFile,'sets')
-% allow user to set sets.train to true for training set
-% to include all data
-  if sets.train == true
-    sets.train = true(1,nWin);
-  end
+    load(saveFile,'sets')
+    % allow user to set sets.train to true for training set
+    % to include all data
+    if sets.train == true
+        sets.train = true(1,nWin);
+    end
 else
-  sets.train = false(1,nWin);
-  sets.train(randperm(nWin,floor(0.8*nWin))) = 1;
-  sets.test = ~sets.train;
-  sets.description = '80/20 split';
-  sets.datafile = loadFile;
+    sets.train = false(1,nWin);
+    sets.train(randperm(nWin,floor(0.8*nWin))) = 1;
+    sets.test = ~sets.train;
+    sets.description = '80/20 split';
+    sets.datafile = loadFile;
 end
 end
 
@@ -222,26 +234,26 @@ function model = initModel(modelOpts,labels,sets)
 % initialize CSFA or dCSFA model
 
 if isa(modelOpts.discrimModel,'function_handle')
-  target = modelOpts.target;
-  model = GP.dCSFA(modelOpts,labels.windows.(target)(sets.train));
+    target = modelOpts.target;
+    model = GP.dCSFA(modelOpts,labels.windows.(target)(sets.train));
 else
-  switch modelOpts.discrimModel
-    case 'none'
-      model = GP.CSFA(modelOpts);
-    case {'svm','logistic','multinomial'}
-      target = modelOpts.target;
-      if isfield(modelOpts,'mixed') && modelOpts.mixed
-        group = modelOpts.group;
-        model = GP.dCSFA(modelOpts,labels.windows.(target)(sets.train),...
-                         labels.windows.(group)(sets.train));
-      else
-        model = GP.dCSFA(modelOpts,labels.windows.(target)(sets.train));
-      end
-    otherwise
-      warning(['Disciminitive model indicated by modelOpts.discrimModel is '...
-               'not valid. Model will be trained using GP generative model only.'])
-      model = GP.CSFA(modelOpts);
-  end
+    switch modelOpts.discrimModel
+        case 'none'
+            model = GP.CSFA(modelOpts);
+        case {'svm','logistic','multinomial'}
+            target = modelOpts.target;
+            if isfield(modelOpts,'mixed') && modelOpts.mixed
+                group = modelOpts.group;
+                model = GP.dCSFA(modelOpts,labels.windows.(target)(sets.train),...
+                    labels.windows.(group)(sets.train));
+            else
+                model = GP.dCSFA(modelOpts,labels.windows.(target)(sets.train));
+            end
+        otherwise
+            warning(['Disciminitive model indicated by modelOpts.discrimModel is '...
+                'not valid. Model will be trained using GP generative model only.'])
+            model = GP.CSFA(modelOpts);
+    end
 end
 end
 
@@ -249,16 +261,16 @@ function chkptFile = generateCpFilename(saveFile)
 % generate checkpoint file name that wont overlap with other checkpoint
 % files for same dataset
 
-  % generate random string
-  symbols = ['a':'z' 'A':'Z' '0':'9'];
-  ST_LENGTH = 5;
-  nums = randi(numel(symbols),[1 ST_LENGTH]);
-  st = ['chkpt_' symbols(nums),'_'];
+% generate random string
+symbols = ['a':'z' 'A':'Z' '0':'9'];
+ST_LENGTH = 5;
+nums = randi(numel(symbols),[1 ST_LENGTH]);
+st = ['chkpt_' symbols(nums),'_'];
 
-  % add chkpt_ to start of filename (taking path into account)
-  idx = regexp(saveFile,'[//\\]');
-  if isempty(idx), idx = 0; end
-  chkptFile = [saveFile(1:idx(end)),st,saveFile(idx(end)+1:end)];
+% add chkpt_ to start of filename (taking path into account)
+idx = regexp(saveFile,'[//\\]');
+if isempty(idx), idx = 0; end
+chkptFile = [saveFile(1:idx(end)),st,saveFile(idx(end)+1:end)];
 end
 
 function modelOpts = fillDefaultMopts(modelOpts)
@@ -270,24 +282,24 @@ if ~isfield(modelOpts,'eta'), modelOpts.eta = 5; end
 if ~isfield(modelOpts,'lowFreq'), modelOpts.lowFreq = 1; end
 if ~isfield(modelOpts,'highFreq'), modelOpts.highFreq = 50; end
 if ~isfield(modelOpts,'maxW')
-  modelOpts.maxW = min(modelOpts.W,1e4);
+    modelOpts.maxW = min(modelOpts.W,1e4);
 end
 if ~isfield(modelOpts,'discrimModel')
-  modelOpts.discrimModel = 'none';
+    modelOpts.discrimModel = 'none';
 end
 end
 
 function filename = addExt(filename)
 % add .mat extension if not there
-  if ~any(regexp(filename,'.mat$'))
+if ~any(regexp(filename,'.mat$'))
     filename = [filename '.mat'];
-  end
+end
 end
 
 function idx = lastTrainIdx(nModels,projectAll)
-  if projectAll
+if projectAll
     idx = 1;
-  else 
+else
     idx = nModels;
-  end
+end
 end

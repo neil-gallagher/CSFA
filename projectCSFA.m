@@ -43,30 +43,21 @@ trainOpts.evalInterval = trainOpts.evalInterval2;
 trainOpts.convThresh = trainOpts.convThresh2;
 trainOpts.convClock = trainOpts.convClock2;
 
-% model parameters
-modelRefitOpts = extractModelOpts(origModel);
-modelRefitOpts.W = size(xFft,3);
-modelRefitOpts.maxW = min(1e3,modelRefitOpts.W);
-
 % initialize new model
-kernels = origModel.LMCkernels;
-modelRefit = GP.CSFA(modelRefitOpts,kernels);
+modelRefit = origModel.copy();
 modelRefit.updateKernels = false;
+W = size(xFft,3);
+maxW = min(origModel.maxW,W);
+modelRefit.setPartitions(W, maxW);
+
+% initialize scores
+scores = randsample(origModel.scores(:), W*modelRefit.L, true);
+modelRefit.scores = reshape(scores, [modelRefit.L, W]);
 if nargin >= 5
-  scoresGiven = ~isnan(initScores);
-  modelRefit.scores(scoresGiven) = initScores(scoresGiven);
+    scoresGiven = ~isnan(initScores);
+    modelRefit.scores(scoresGiven) = initScores(scoresGiven);
 end
 
 % project new data onto factors
 trainOpts.algorithm(s,xFft,modelRefit,trainOpts);
-end
-
-function modelOpts = extractModelOpts(model)
-  modelOpts.L = model.L;
-  modelOpts.Q = model.Q;
-  modelOpts.C = model.C;
-  modelOpts.R = model.LMCkernels{1}.coregs.B{1}.R;
-  modelOpts.eta = model.eta;
-  modelOpts.lowFreq = model.freqBounds(1);
-  modelOpts.highFreq = model.freqBounds(2);
 end

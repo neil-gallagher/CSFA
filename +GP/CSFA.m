@@ -31,10 +31,7 @@ classdef CSFA < handle & GP.spectrumPlots
         self.eta = modelOpts.eta;
         
         % divide windows into partitions for computations
-        self.maxW = modelOpts.maxW;
-        self.P = ceil(modelOpts.W/self.maxW);
-        self.W(1:(self.P-1)) = self.maxW;
-        self.W(self.P) = modelOpts.W - self.maxW*(self.P-1);
+        self.setPartitions(modelOpts.W, modelOpts.maxW);
         
         % initialize factor scores
         self.scores = rand(self.L,modelOpts.W);
@@ -72,6 +69,18 @@ classdef CSFA < handle & GP.spectrumPlots
         self.updateKernels = true;
         self.updateNoise = false;
       end
+    end
+
+
+    function setPartitions(self, W, maxW)
+    %{
+    setPartitions: initializes variables needed to analyze model data in
+        sequential partitions.
+    %}
+        self.maxW = maxW;
+        self.P = ceil(W/self.maxW);
+        self.W(1:(self.P-1)) = self.maxW;
+        self.W(self.P) = W - self.maxW*(self.P-1);
     end
     
     %{

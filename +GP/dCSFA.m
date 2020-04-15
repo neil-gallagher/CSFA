@@ -75,7 +75,7 @@ classdef dCSFA < handle
                     loss = sum(-y.*log(yHat) + (1-y).*log(1-yHat));
                     % cross-entropy
                 case 'multinomial'
-                    yHat = mnrval(self.classModel,features');
+                    yHat = mnrval(self.classModel,features(1:end-1,:)');
                     loss = sum(sum(-y.*log(yHat')));
                     % cross-entropy
             end
@@ -192,6 +192,7 @@ classdef dCSFA < handle
         end
         
         function grad = multiGradient(self,thisLabel,features)
+            features = features(1:end-1,:);
             self.classModel = mnrfit(features',thisLabel');
             
             % 3) gradient of cross-entropy loss

@@ -151,7 +151,7 @@ if ~exist('scores','var') && (~exist('trainIter','var') || trainIter~=Inf)
     if exist('trainModels','var') % implies chkptFile was loaded
         model = trainModels(end);
     else
-        model = initModel(modelOpts,labels,sets);
+        model = initModel(modelOpts,labels,sets,xFft);
     end
     
     % update model via gradient descent
@@ -180,7 +180,8 @@ else
     initScores = nan(modelOpts.L,nHoldout);
 end
 
-while k >= lastTrainIdx(nModels,trainOpts.projectAll)
+if ~trainOpts.projectAll, k=1; end
+while k >= 1
     % for each saved model learn scores for training & holdout sets
     if isa(trainModels(k),'GP.CSFA')
         thisTrainModel = trainModels(k);
@@ -230,7 +231,7 @@ else
 end
 end
 
-function model = initModel(modelOpts,labels,sets)
+function model = initModel(modelOpts,labels,sets,xFft)
 % initialize CSFA or dCSFA model
 
 if isa(modelOpts.discrimModel,'function_handle')
@@ -239,7 +240,7 @@ if isa(modelOpts.discrimModel,'function_handle')
 else
     switch modelOpts.discrimModel
         case 'none'
-            model = GP.CSFA(modelOpts);
+            model = GP.CSFA(modelOpts, labels.s, xFft(:,:,sets.train));
         case {'svm','logistic','multinomial'}
             target = modelOpts.target;
             if isfield(modelOpts,'mixed') && modelOpts.mixed
@@ -293,13 +294,5 @@ function filename = addExt(filename)
 % add .mat extension if not there
 if ~any(regexp(filename,'.mat$'))
     filename = [filename '.mat'];
-end
-end
-
-function idx = lastTrainIdx(nModels,projectAll)
-if projectAll
-    idx = 1;
-else
-    idx = nModels;
 end
 end

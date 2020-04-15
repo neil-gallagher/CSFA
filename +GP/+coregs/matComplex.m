@@ -20,16 +20,26 @@ classdef matComplex < handle
                 self.C = C;
                 self.R = R;
                 
-                if ~exist('weights','var')
+                if ~exist('weights','var') || isempty(weights)
                     self.logWeights = log(1/10*rand(C,R)+exp(LOGW_LB));%gamrnd(3,1,[C,R]);
-                    self.shifts = pi/2 * randn(C,R); %2*pi*rand(C,R);
-                    self.shifts(1,:) = 0;
-                    self.weightsB = cat(3,LOGW_LB*ones(C,R),LOGW_UB*ones(C,R));
-                    self.shiftsB = cat(3,-inf(C,R),inf(C,R));
                 else
                     self.logWeights = log(weights);
+                end
+                if ~exist('shifts','var') || isempty(shifts)
+                    self.shifts = pi/2 * randn(C,R); %2*pi*rand(C,R);
+                    self.shifts(1,:) = 0;
+                else
                     self.shifts = shifts;
+                end
+                if ~exist('weightsB','var') || isempty(weightsB)
+                    self.weightsB = cat(3,LOGW_LB*ones(C,R),LOGW_UB*ones(C,R));
+                else
                     self.weightsB = weightsB;
+                end
+                
+                if ~exist('shiftsB','var') || isempty(shiftsB)
+                    self.shiftsB = cat(3,-inf(C,R),inf(C,R));
+                else
                     self.shiftsB = shiftsB;
                 end
             end

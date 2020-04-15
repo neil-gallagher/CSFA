@@ -59,12 +59,12 @@ function preprocessDeap(saveFile,dataOpts)
 %       window. W=number of time windows.
 
 DATA_DIR = 'data/';
-  
+
 if nargin < 2
-  % input/data preprocessing parameters
-  dataOpts.highFreq = 45;
-  dataOpts.lowFreq = 4;
-  dataOpts.normalizeBy = 'subject';
+    % input/data preprocessing parameters
+    dataOpts.highFreq = 45;
+    dataOpts.lowFreq = 4;
+    dataOpts.normalizeBy = 'subject';
 end
 
 load([DATA_DIR saveFile])
@@ -76,34 +76,34 @@ ptsPerWindow = labels.windowLength * fs;
 
 X = double(data);
 switch dataOpts.normalizeBy
-  case 'window'
-    X = zscore(X);
-  case 'all'
-    % normalize by whole dataset, rather than by windows
-    a = size(X,1);
-    b = size(X,2);
-    c = size(X,3);
-    X = zscore(X(:));
-    X = reshape(X,[a,b,c]);
-    % windows still have zero mean
-    X = bsxfun(@minus,X,mean(X));
-  case 'subject'
-    % normalize by channel for each subject
-    subject = unique(labels.windows.subjectID);
-    for m = subject'
-      thisIdx = ismember(labels.windows.subjectID,m);
-      xThisSubject = X(:,:,thisIdx);
-      % windows still have zero mean
-      xZeroMean = bsxfun(@minus,xThisSubject,mean(xThisSubject));
-      % set Std Dev of each channel to 1
-      xZeroMean = reshape(permute(xZeroMean,[1,3,2]),[],nAreas);
-      xNorm = bsxfun(@rdivide,xZeroMean,std(xZeroMean));
-      X(:,:,thisIdx) = permute(reshape(xNorm,ptsPerWindow,[], ...
-        nAreas),[1,3,2]);
-    end
-  otherwise
-    warning('data.normWindows value not recognized. Normalizing by window')
-    X = zscore(X);
+    case 'window'
+        X = zscore(X);
+    case 'all'
+        % normalize by whole dataset, rather than by windows
+        a = size(X,1);
+        b = size(X,2);
+        c = size(X,3);
+        X = zscore(X(:));
+        X = reshape(X,[a,b,c]);
+        % windows still have zero mean
+        X = bsxfun(@minus,X,mean(X));
+    case 'subject'
+        % normalize by channel for each subject
+        subject = unique(labels.windows.subjectID);
+        for m = subject'
+            thisIdx = ismember(labels.windows.subjectID,m);
+            xThisSubject = X(:,:,thisIdx);
+            % windows still have zero mean
+            xZeroMean = bsxfun(@minus,xThisSubject,mean(xThisSubject));
+            % set Std Dev of each channel to 1
+            xZeroMean = reshape(permute(xZeroMean,[1,3,2]),[],nAreas);
+            xNorm = bsxfun(@rdivide,xZeroMean,std(xZeroMean));
+            X(:,:,thisIdx) = permute(reshape(xNorm,ptsPerWindow,[], ...
+                nAreas),[1,3,2]);
+        end
+    otherwise
+        warning('data.normWindows value not recognized. Normalizing by window')
+        X = zscore(X);
 end
 
 % take Fourier transform

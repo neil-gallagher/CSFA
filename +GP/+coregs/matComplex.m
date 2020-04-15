@@ -15,7 +15,7 @@ classdef matComplex < handle
     
     methods
         function self = matComplex(C,R,weights,shifts,weightsB,shiftsB)
-          LOGW_LB = -9.9; LOGW_UB = 3; 
+            LOGW_LB = -9.9; LOGW_UB = 3;
             if nargin > 0
                 self.C = C;
                 self.R = R;

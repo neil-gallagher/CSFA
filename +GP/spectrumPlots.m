@@ -91,11 +91,11 @@ classdef spectrumPlots < handle
                             if opts.showAmplitude
                                 ax = gca;
                                 GP.spectrumPlots.makeAmplitudeLabels(ax,opts,...
-                                                                get(h,'color'))
+                                    get(h,'color'))
                             else set(gca,'YTick',[]);
                             end
                             ylabel('Amplitude','FontSize',12,'color',...
-                                    get(h,'color'))
+                                get(h,'color'))
                         else set(gca,'YTick',[]);
                         end
                         
@@ -106,7 +106,7 @@ classdef spectrumPlots < handle
                     else
                         subplot(ha(c1+C*(c2-1)));
                         ax = GP.spectrumPlots.plotOneCsd(opts,amplitude,phase);
-                                                
+                        
                         set(ax(1),'YTick',[]);
                         set(ax(1),'XTick',[]); set(ax(2),'XTick',[]);
                         

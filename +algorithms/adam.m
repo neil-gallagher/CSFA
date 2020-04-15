@@ -32,9 +32,9 @@ algVars.iter = 1;
 algVars.calcStep = @(g,av) calcStep(g,av,BETA1,BETA2,EPS,LEARN_RATE);
 
 if nargin > 4
-  [evals,trainModels] = algorithms.descent(x,yAll,model,opts,algVars,chkptfile);
+    [evals,trainModels] = algorithms.descent(x,yAll,model,opts,algVars,chkptfile);
 else
-  [evals,trainModels] = algorithms.descent(x,yAll,model,opts,algVars);
+    [evals,trainModels] = algorithms.descent(x,yAll,model,opts,algVars);
 end
 end
 

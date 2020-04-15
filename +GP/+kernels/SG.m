@@ -81,7 +81,7 @@ classdef SG < handle
             res = -1/self.var*(self.mu-s) .* self.specDens(s);
         end
         
-                % Make a copy of a handle object.
+        % Make a copy of a handle object.
         function new = copy(self)
             % Instantiate new object of the same class.
             new = feval(class(self));

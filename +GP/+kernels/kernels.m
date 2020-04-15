@@ -26,7 +26,7 @@ classdef kernels < handle
                 res = cellfun(@(x)x.getParams,self.k,'un',0);
                 res = cell2mat(res');
             else
-                res = self.k{q}.getParams;  
+                res = self.k{q}.getParams;
             end
         end
         
@@ -56,7 +56,7 @@ classdef kernels < handle
         end
         
         function res = covFun(self,tau,q)
-            if nargin<3 
+            if nargin<3
                 res = zeros(numel(tau),self.Q);
                 for q = 1:self.Q, res(:,q) = self.k{q}.covFun(tau); end
             else
@@ -69,7 +69,7 @@ classdef kernels < handle
                 res = zeros(numel(s),self.Q);
                 for q = 1:self.Q, res(:,q) = self.k{q}.specDens(s); end
             else
-                res = self.k{q}.specDens(s); 
+                res = self.k{q}.specDens(s);
             end
         end
         

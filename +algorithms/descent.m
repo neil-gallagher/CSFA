@@ -12,7 +12,7 @@ function [evals,trainModels] = descent(x,yAll,model,opts,algVars,chkptfile)
 %       evalInterval: interval at which to evaluate likelihood and save a
 %           checkpoint.
 %       saveInterval: interval at which to save intermediate models during
-%           training. 
+%           training.
 %       convThresh, convClock: training stops if the objective function
 %           does not increase by 'convThresh' after 'convClock'
 %           evaluations of the log likelihood.
@@ -47,113 +47,113 @@ tic
 
 % load info in checkpoint file (Check that this works)
 if nargin >= 6
-  cp = load(chkptfile);
-  if all(isfield(cp,{'params', 'algVars', 'trainIter'}))
-    algVars = cp.algVars;
-    model.setParams(cp.params);
-    iter = cp.trainIter;
-    if isfield(cp,'trainModels'), trainModels = cp.trainModels; end
-    if isfield(cp,'evals'), evals = cp.evals; end
-  end
+    cp = load(chkptfile);
+    if all(isfield(cp,{'params', 'algVars', 'trainIter'}))
+        algVars = cp.algVars;
+        model.setParams(cp.params);
+        iter = cp.trainIter;
+        if isfield(cp,'trainModels'), trainModels = cp.trainModels; end
+        if isfield(cp,'evals'), evals = cp.evals; end
+    end
 end
 
 model.makeIdentifiable();
 while (iter <= opts.iters) && (convCntr < opts.convClock)
-  params = model.getParams();
-
-  % calculate gradient for this iteration
-  if opts.stochastic
-   inds = randsample(W,opts.batchSize);
-   y = yAll(:,:,inds);
-   [g, condNum(iter)] = model.gradient(x,y,inds);
-  else
-   [g, condNum(iter)] = model.gradient(x,yAll); 
-  end
-
-  if condNum(iter) > 1e6
-    warning(['Condition number on covariance matrix is %.3e. Gradient ' ...
-             'calculation are likely incorrect.'],condNum(iter))
-  end
-  
-  [step, algVars] = algVars.calcStep(g,algVars);
-
-  % take step
-  pNew = params + step;
-  
-  % Update parameters
-  model.setParams(pNew);
-  pNew = model.getParams;
-  
-  % occasionally check performance
-  if mod(iter,opts.evalInterval)==0
-    thisEval = model.evaluate(x,yAll)/W;
-    evals(iter) = thisEval;
+    params = model.getParams();
+    
+    % calculate gradient for this iteration
     if opts.stochastic
-      winsComplete = iter*opts.batchSize;
-      fprintf(['Iter #%5d/%d - %.1f Epochs Completed - Time:%4.1fs - Avg. LL:%4.4g' ...
-               ' - Max Cond. #: %.3g\n'], iter, opts.iters, winsComplete/W, ...
-              toc, thisEval, condNum(iter));
+        inds = randsample(W,opts.batchSize);
+        y = yAll(:,:,inds);
+        [g, condNum(iter)] = model.gradient(x,y,inds);
     else
-      fprintf('Iter #%5d/%d - Time:%4.1fs - Avg. LL:%4.4g - Max Cond. #: %.3g\n',...
-              iter, opts.iters, toc, thisEval, condNum(iter));
+        [g, condNum(iter)] = model.gradient(x,yAll);
     end
+    
+    if condNum(iter) > 1e6
+        warning(['Condition number on covariance matrix is %.3e. Gradient ' ...
+            'calculation are likely incorrect.'],condNum(iter))
+    end
+    
+    [step, algVars] = algVars.calcStep(g,algVars);
+    
+    % take step
+    pNew = params + step;
+    
+    % Update parameters
+    model.setParams(pNew);
+    pNew = model.getParams;
+    
+    % occasionally check performance
+    if mod(iter,opts.evalInterval)==0
+        thisEval = model.evaluate(x,yAll)/W;
+        evals(iter) = thisEval;
+        if opts.stochastic
+            winsComplete = iter*opts.batchSize;
+            fprintf(['Iter #%5d/%d - %.1f Epochs Completed - Time:%4.1fs - Avg. LL:%4.4g' ...
+                ' - Max Cond. #: %.3g\n'], iter, opts.iters, winsComplete/W, ...
+                toc, thisEval, condNum(iter));
+        else
+            fprintf('Iter #%5d/%d - Time:%4.1fs - Avg. LL:%4.4g - Max Cond. #: %.3g\n',...
+                iter, opts.iters, toc, thisEval, condNum(iter));
+        end
+        if nargin >= 6
+            cp.evals = evals;
+        end
+        
+        % convergence check
+        if thisEval > maxEval + opts.convThresh
+            convCntr = 0;
+            maxEval = thisEval;
+        else
+            convCntr = convCntr + 1;
+        end
+    end
+    
+    % occasionally save intermediate models
+    if mod(iter,opts.saveInterval)==0
+        mCopy = model.copy;
+        mCopy.makeIdentifiable();
+        trainModels(saveIdx) = mCopy;
+        saveIdx = saveIdx + 1;
+        fprintf('Saved model after %d iterations\n',iter);
+        if nargin >= 6
+            cp.trainModels = trainModels;
+        end
+    end
+    
+    % save info back to checkpoint file
     if nargin >= 6
-      cp.evals = evals;
+        cp.params = pNew; cp.algVars = algVars;
+        cp.trainIter = iter+1;
+        save(chkptfile,'-struct','cp')
     end
-
-    % convergence check
-    if thisEval > maxEval + opts.convThresh
-      convCntr = 0;
-      maxEval = thisEval;
-    else
-      convCntr = convCntr + 1;
-    end
-  end
-  
-  % occasionally save intermediate models
-  if mod(iter,opts.saveInterval)==0
-    mCopy = model.copy;
-    mCopy.makeIdentifiable();
-    trainModels(saveIdx) = mCopy;
-    saveIdx = saveIdx + 1;
-    fprintf('Saved model after %d iterations\n',iter);
-    if nargin >= 6
-      cp.trainModels = trainModels;
-    end
-  end
-  
-  % save info back to checkpoint file
-  if nargin >= 6
-    cp.params = pNew; cp.algVars = algVars;
-    cp.trainIter = iter+1;
-    save(chkptfile,'-struct','cp')
-  end
-  
-  iter = iter + 1;
+    
+    iter = iter + 1;
 end
 iter = iter - 1;
 
 if isfinite(iter)
-  % save final results if necessary
-  if mod(iter,opts.evalInterval)~=0
-    evals(iter) = model.evaluate(x,yAll)/W;
-    if nargin >= 6
-      cp.evals = evals;
+    % save final results if necessary
+    if mod(iter,opts.evalInterval)~=0
+        evals(iter) = model.evaluate(x,yAll)/W;
+        if nargin >= 6
+            cp.evals = evals;
+        end
     end
-  end
-  if mod(iter,opts.saveInterval)~=0
-    model.makeIdentifiable();
-    trainModels(saveIdx) = model;
-    saveIdx = saveIdx + 1;
-    if nargin >= 6
-      cp.trainModels = trainModels;
+    if mod(iter,opts.saveInterval)~=0
+        model.makeIdentifiable();
+        trainModels(saveIdx) = model;
+        saveIdx = saveIdx + 1;
+        if nargin >= 6
+            cp.trainModels = trainModels;
+        end
     end
-  end
-  if nargin >= 6
-    cp.params = params;
-    cp.trainIter = Inf;
-    save(chkptfile,'-struct','cp')
-  end
+    if nargin >= 6
+        cp.params = params;
+        cp.trainIter = Inf;
+        save(chkptfile,'-struct','cp')
+    end
 end
 
 % remove unused elements in trainModels

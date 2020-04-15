@@ -97,7 +97,7 @@ classdef LMC_DFT < GP.LMC
             opts.block = true;
             opts.smallFlag = true;
             UKUinv = self.getUKUinv(s,opts);
-
+            
             A = self.getA(yfft,opts.Ez,UKUinv);
             A = reshape(A,[Nc^2,Ns]);
             

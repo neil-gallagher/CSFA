@@ -29,39 +29,39 @@ function trainOpts = fillDefaultTopts(trainOpts)
 %           (obtained after all training iterations), rather than for each
 %           intermediate model as well. Default: false
 if ~isfield(trainOpts,'iters')
-  trainOpts.iters = 5e4;
+    trainOpts.iters = 5e4;
 end
 if ~isfield(trainOpts,'saveInterval')
-  trainOpts.saveInterval = 50;
-end 
+    trainOpts.saveInterval = 50;
+end
 if ~isfield(trainOpts,'evalInterval')
-  trainOpts.evalInterval = 10;
+    trainOpts.evalInterval = 10;
 end
 if ~isfield(trainOpts,'evalInterval2')
-  trainOpts.evalInterval2 = trainOpts.evalInterval;
+    trainOpts.evalInterval2 = trainOpts.evalInterval;
 end
 if ~isfield(trainOpts,'convThresh')
-  trainOpts.convThresh = 100;
+    trainOpts.convThresh = 100;
 end
 if ~isfield(trainOpts,'convThresh2')
-  trainOpts.convThresh2 = trainOpts.convThresh;
+    trainOpts.convThresh2 = trainOpts.convThresh;
 end
 if ~isfield(trainOpts,'convClock')
-  trainOpts.convClock = 5;
+    trainOpts.convClock = 5;
 end
 if ~isfield(trainOpts,'convClock2')
-  trainOpts.convClock2 = trainOpts.convClock;
+    trainOpts.convClock2 = trainOpts.convClock;
 end
 if ~isfield(trainOpts,'algorithm')
-  trainOpts.algorithm = @algorithms.adam;
+    trainOpts.algorithm = @algorithms.adam;
 end
 if ~isfield(trainOpts,'stochastic')
-  trainOpts.stochastic = false;
+    trainOpts.stochastic = false;
 end
 if ~isfield(trainOpts,'batchSize')
-  trainOpts.batchSize = 500;
+    trainOpts.batchSize = 500;
 end
 if ~isfield(trainOpts,'projectAll')
-  trainOpts.projectAll = false;
+    trainOpts.projectAll = false;
 end
 end

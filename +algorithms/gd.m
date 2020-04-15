@@ -25,9 +25,9 @@ LEARN_RATE = 1e-6;
 algVars.calcStep = @(g,av) calcStep(g,av,LEARN_RATE);
 
 if nargin > 4
-  [evals,trainModels] = algorithms.descent(x,y,model,opts,algVars,chkptfile);
+    [evals,trainModels] = algorithms.descent(x,y,model,opts,algVars,chkptfile);
 else
-  [evals,trainModels] = algorithms.descent(x,y,model,opts,algVars);
+    [evals,trainModels] = algorithms.descent(x,y,model,opts,algVars);
 end
 
 end

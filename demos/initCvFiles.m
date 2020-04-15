@@ -32,10 +32,10 @@ sId = labels.windows.subjectID;
 
 sets.datafile = filepath;
 for k = 1:K
-  idx = ((k-1)*N_TEST + 1):k*N_TEST;
-  sets.test = ismember(sId,randId(idx));
-  sets.train = ~sets.test;
-
-  modFile = sprintf('data/cvSplit%d.mat',k);
-  save(modFile,'sets')
+    idx = ((k-1)*N_TEST + 1):k*N_TEST;
+    sets.test = ismember(sId,randId(idx));
+    sets.train = ~sets.test;
+    
+    modFile = sprintf('data/cvSplit%d.mat',k);
+    save(modFile,'sets')
 end

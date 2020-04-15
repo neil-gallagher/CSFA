@@ -20,7 +20,7 @@ function modelRefit = projectCSFA(xFft,origModel,s,trainOpts,initScores)
 %         the objective function does not increase by 'convThresh' after
 %         'convClock' evaluations of the objective function.
 %     algorithm: function handle to the desired gradient descent
-%         algorithm for model learning. 
+%         algorithm for model learning.
 %         Example: [evals,trainModels] = trainOpts.algorithm(labels.s,...
 %                        xFft(:,:,sets.train),model,trainOpts,chkptFile);
 %   initScores: (optional) LxW of scores to initialize
@@ -29,13 +29,13 @@ function modelRefit = projectCSFA(xFft,origModel,s,trainOpts,initScores)
 %     random initialization.
 
 if nargin < 4
-  trainOpts = [];
+    trainOpts = [];
 end
 trainOpts = fillDefaultTopts(trainOpts);
 
 % adjust training options to be appropriate for score projection
 if isequal(trainOpts.algorithm,@algorithms.noisyAdam)
-  trainOpts.algorithm = @algorithms.adam;
+    trainOpts.algorithm = @algorithms.adam;
 end
 trainOpts.saveInterval = trainOpts.iters + 1;
 trainOpts.stochastic = false;

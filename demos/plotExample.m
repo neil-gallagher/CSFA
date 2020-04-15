@@ -4,7 +4,7 @@ DATAFILE = 'data/datastore.mat';
 FACTOR_IDX = 3;
 MODEL_IDX = 1;
 CHANNEL_LABEL = {'F7','F8','F3','F4','Fz','C3','C4','Cz','P3', ...
-                 'P4','Pz','O1','O2'};
+    'P4','Pz','O1','O2'};
 
 % load trained model
 load(MODELFILE)

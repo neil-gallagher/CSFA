@@ -190,7 +190,7 @@ while k >= 1
     end
     
     trainData = xFft(:,:,sets.train);
-    holdoutData = xFft(:,:,holdout);      
+    holdoutData = xFft(:,:,holdout);
     
     a = tic;
     thisTrainModel = projectCSFA(trainData,thisTrainModel,labels.s,trainOpts,...
@@ -200,7 +200,7 @@ while k >= 1
     holdoutModel = projectCSFA(holdoutData,thisTrainModel,labels.s,trainOpts,...
         initScores);
     scores(:,holdout,k) = holdoutModel.scores;
-
+    
     fprintf('Projected model %d: %.1fs\n',k,toc(a))
     
     save(chkptFile,'scores','trainModels','evals',...

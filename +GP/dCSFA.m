@@ -72,11 +72,11 @@ classdef dCSFA < handle
                 case 'logistic'
                     % assumes boolean labels
                     yHat = self.classModel.Fitted.Probability;
-                    loss = sum(-y.*log(yHat) + (1-y).*log(1-yHat));
+                    loss = sum(-y.*log(yHat+eps) + (1-y).*log(1-yHat+eps));
                     % cross-entropy
                 case 'multinomial'
                     yHat = mnrval(self.classModel,features(1:end-1,:)');
-                    loss = sum(sum(-y.*log(yHat')));
+                    loss = sum(sum(-y.*log(yHat'+eps)));
                     % cross-entropy
             end
             

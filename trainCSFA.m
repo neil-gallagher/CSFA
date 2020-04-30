@@ -180,8 +180,7 @@ else
     initScores = nan(modelOpts.L,nHoldout);
 end
 
-if ~trainOpts.projectAll, k=1; end
-while k >= 1
+while k >= lastTrainIdx(nModels,trainOpts.projectAll)
     % for each saved model learn scores for training & holdout sets
     if isa(trainModels(k),'GP.CSFA')
         thisTrainModel = trainModels(k);
@@ -209,6 +208,10 @@ while k >= 1
     % initialize next model with scores from current model
     initScores = holdoutModel.scores;
     k = k-1;
+end
+if ~trainOpts.projectAll
+    scores = scores(:,:,end);
+    save(chkptFile,'scores','-append')
 end
 end
 
@@ -296,3 +299,12 @@ if ~any(regexp(filename,'.mat$'))
     filename = [filename '.mat'];
 end
 end
+
+function idx = lastTrainIdx(nModels,projectAll)
+if projectAll
+    idx = 1;
+else
+    idx = nModels;
+end
+end
+

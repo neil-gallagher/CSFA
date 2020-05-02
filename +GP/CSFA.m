@@ -15,6 +15,7 @@ classdef CSFA < handle & GP.spectrumPlots
         eta % additive Gaussian noise
         
         updateKernels % biniary indicator for kernel updates
+        updateScores % biniary indicator for score updates
         updateNoise % biniary indicator for noise floor updates
     end
     
@@ -113,13 +114,15 @@ classdef CSFA < handle & GP.spectrumPlots
                             modelOpts.R,coregs,kernels,inf);
                         self.LMCkernels{l}.updateNoise = false;
                         
-                        self.LMCkernels{l}.normalizeCovariance();
+                        normConst = self.LMCkernels{l}.normalizeCovariance();
+                        %scoreInit(:,l) = scoreInit(:,l)*normConst;
                     end
                     
                     self.scores = scoreInit';
                 end
                 
                 self.updateKernels = true;
+                self.updateScores = true;
                 self.updateNoise = false;
             end
         end
@@ -226,11 +229,14 @@ classdef CSFA < handle & GP.spectrumPlots
       variance of the spectral gaussian
         %}
         function res = getParams(self)
+            if self.updateScores
+                res = self.scores(:);
+            else
+                res = [];
+            end
             if self.updateKernels
                 params = cellfun(@(x)x.getParams,self.LMCkernels,'un',0);
-                res = vertcat(params{:},self.scores(:));
-            else
-                res = self.scores(:);
+                res = vertcat(params{:},res);
             end
             if self.updateNoise
                 res = [self.eta; res];
@@ -254,12 +260,18 @@ classdef CSFA < handle & GP.spectrumPlots
                     indB = indE + 1;
                 end
             end
-            self.scores = reshape(params(indB:end),[self.L,sum(self.W)]);
+            if self.updateScores
+                self.scores = reshape(params(indB:end),[self.L,sum(self.W)]);
+            end
         end
         
         function [lb,ub] = getBounds(self)
-            lb = zeros(self.L*sum(self.W),1);
-            ub = 100*ones(self.L*sum(self.W),1);
+            if self.updateScores
+                lb = zeros(self.L*sum(self.W),1);
+                ub = 100*ones(self.L*sum(self.W),1);
+            else
+                lb = []; ub = [];
+            end
             if self.updateKernels
                 [lball,uball] = cellfun(@(x)x.getBounds,self.LMCkernels,'un',0);
                 lb = vertcat(lball{:},lb);
@@ -314,10 +326,11 @@ classdef CSFA < handle & GP.spectrumPlots
                     pIdx.sgVars(vStart:2:vEnd) = true;
                 end
             end
-            pIdx.scores = idxVec;
-            nScores = numel(self.scores(:));
-            pIdx.scores(end-nScores+1:end) = true;
-            
+            if self.updateScores
+                pIdx.scores = idxVec;
+                nScores = numel(self.scores(:));
+                pIdx.scores(end-nScores+1:end) = true;
+            end
         end
         
         % gradient: returns gradients of the log-likelihood of the current
@@ -444,12 +457,13 @@ classdef CSFA < handle & GP.spectrumPlots
                         %                   util.gradientCheckNoise
                         %                 end
                     end
-                    
-                    % gradient for window w factor scores
-                    sgrad(:,inds(w)) = real(Ag(:)'*UKUlStore)';
-                    %if strcmp(gradCheck,'scores')
-                    %  util.gradientCheckScores
-                    %end
+                    if self.updateScores
+                        % gradient for window w factor scores
+                        sgrad(:,inds(w)) = real(Ag(:)'*UKUlStore)';
+                        %if strcmp(gradCheck,'scores')
+                        %  util.gradientCheckScores
+                        %end
+                    end
                 end
             end
             
@@ -458,10 +472,13 @@ classdef CSFA < handle & GP.spectrumPlots
             %end
             
             % concatenate gradients if necessary
-            if self.updateKernels
-                grad = vertcat(LMCgrad(:),sgrad(:));
-            else
+            if self.updateScores
                 grad = sgrad(:);
+            else
+                grad = [];
+            end
+            if self.updateKernels
+                grad = vertcat(LMCgrad(:),grad); 
             end
             if self.updateNoise
                 grad = vertcat(ngrad, grad);

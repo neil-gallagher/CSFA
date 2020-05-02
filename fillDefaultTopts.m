@@ -59,7 +59,7 @@ if ~isfield(trainOpts,'stochastic')
     trainOpts.stochastic = false;
 end
 if ~isfield(trainOpts,'batchSize')
-    trainOpts.batchSize = 500;
+    trainOpts.batchSize = 128;
 end
 if ~isfield(trainOpts,'projectAll')
     trainOpts.projectAll = false;

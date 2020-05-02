@@ -74,8 +74,9 @@ while (iter <= opts.iters) && (convCntr < opts.convClock)
         warning(['Condition number on covariance matrix is %.3e. Gradient ' ...
             'calculation are likely incorrect.'],condNum(iter))
     end
-    
-    [step, algVars] = algVars.calcStep(g,algVars);
+
+    updateIdx = ones(size(params));
+    [step, algVars] = algVars.calcStep(g,algVars,updateIdx);
     
     % take step
     pNew = params + step;

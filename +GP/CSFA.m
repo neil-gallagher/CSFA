@@ -122,7 +122,7 @@ classdef CSFA < handle & GP.spectrumPlots
                 
                 self.updateKernels = true;
                 self.updateScores = true;
-                self.updateNoise = false;
+                self.updateNoise = modelOpts.learnNoise;
             end
         end
         
@@ -292,18 +292,20 @@ classdef CSFA < handle & GP.spectrumPlots
         %   coregShifts (if updateKernels)
         %   noise (if updateNoise)
         function pIdx = getParamIdx(self)
+            % initialize all parameter masks as boolean vectors
             nParams = numel(getParams(self));
             idxVec = false(1,nParams);
+            pIdx.noise = idxVec; pIdx.scores = idxVec;
+            pIdx.sgMeans = idxVec; pIdx.sgVars = idxVec;
+            pIdx.coregWeights = idxVec; pIdx.coregShifts = idxVec;
+            
             if self.updateNoise
-                pIdx.noise = idxVec; pIdx.noise(1) = 1;
+                pIdx.noise(1) = 1;
                 un = true;
             else
                 un = false;
             end
             if self.updateKernels
-                pIdx.sgMeans = idxVec; pIdx.sgVars = idxVec;
-                pIdx.coregWeights = idxVec; pIdx.coregShifts = idxVec;
-                
                 nFactorParams = self.LMCkernels{1}.nParams;
                 nKernelParams = self.LMCkernels{1}.coregs.B{1}.nParams;
                 R = self.LMCkernels{1}.coregs.B{1}.R;
@@ -326,7 +328,6 @@ classdef CSFA < handle & GP.spectrumPlots
                 end
             end
             if self.updateScores
-                pIdx.scores = idxVec;
                 nScores = numel(self.scores(:));
                 pIdx.scores(end-nScores+1:end) = true;
             end

@@ -46,6 +46,7 @@ trainOpts.convClock = trainOpts.convClock2;
 % initialize new model
 modelRefit = origModel.copy();
 modelRefit.updateKernels = false;
+modelRefit.updateNoise = false;
 W = size(xFft,3);
 maxW = min(origModel.maxW,W);
 modelRefit.setPartitions(W, maxW);

@@ -67,7 +67,8 @@ while (iter <= opts.iters) && (convCntr < opts.convClock)
     model.setUpdateState(false, true);
     [g, condNum(iter)] = model.gradient(x,yAll);
     params = model.getParams();
-    [step, algVars] = algVars.calcStep(g, algVars, paramIdx.scores);
+    updateIdx = paramIdx.scores | paramIdx.noise;
+    [step, algVars] = algVars.calcStep(g, algVars, updateIdx);
     pNew = params + step;
     model.setParams(pNew);
     
@@ -90,7 +91,8 @@ while (iter <= opts.iters) && (convCntr < opts.convClock)
         end
         
         params = model.getParams();
-        [step, algVars] = algVars.calcStep(g, algVars, ~paramIdx.scores);
+        updateIdx = ~paramIdx.scores;
+        [step, algVars] = algVars.calcStep(g, algVars, updateIdx);
         pNew = params + step;
         model.setParams(pNew);
     end

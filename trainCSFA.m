@@ -248,7 +248,7 @@ end
 function model = initModel(modelOpts,labels,sets,xFft)
 % initialize CSFA or dCSFA model
 
-if isfield(modelOpts,'discrimModel')
+if isfield(modelOpts,'discrimModel')  && ~strcmp(modelOpts.discrimModel,'none')
     target = modelOpts.target;
     targetLabel = labels.windows.(target)(sets.train);
     
@@ -310,6 +310,9 @@ if ~isfield(modelOpts,'maxW')
 end
 if ~isfield(modelOpts,'discrimModel')
     modelOpts.discrimModel = 'none';
+end
+if ~isfield(modelOpts,'learnNoise')
+    modelOpts.learnNoise = true;
 end
 end
 

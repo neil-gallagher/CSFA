@@ -108,6 +108,11 @@ function trainCSFA(loadFile,saveFile,modelOpts,trainOpts,chkptFile)
 saveFile = addExt(saveFile);
 loadFile = addExt(loadFile);
 
+% load data and associated info
+load(loadFile,'xFft','labels')
+nWin = size(xFft,3);
+sets = loadSets(saveFile,loadFile,nWin);
+
 % initialize options structures if not given as inputs
 if nargin < 4
     trainOpts = [];
@@ -116,16 +121,23 @@ if nargin < 3
     modelOpts = [];
 end
 
-% load data and associated info
-load(loadFile,'xFft','labels')
-nWin = size(xFft,3);
-
-sets = loadSets(saveFile,loadFile,nWin);
-
 if nargin < 5
     % initialize matfile for checkpointing
     chkptFile = generateCpFilename(saveFile)
     save(chkptFile,'modelOpts','trainOpts','sets')
+    
+    % fill in default options and remaining parameters
+    modelOpts.C = size(xFft,2); % number of signals
+    modelOpts.W = sum(sets.train);    % # of windows
+    modelOpts = fillDefaultMopts(modelOpts);
+    trainOpts = fillDefaultTopts(trainOpts);
+    
+    if trainOpts.normalizeData
+        % normalize data to have unit power for each channel/frequency
+        normConst = sqrt(mean(abs(xFft).^2,3));
+        xFft = bsxfun(@rdivide, xFft, normConst);
+        save(chkptFile,'normConst','-append')
+    end
 else
     % load info from checkpoint file
     chkptFile = addExt(chkptFile)
@@ -136,13 +148,16 @@ else
     if isfield(cp,'trainModels'), trainModels = cp.trainModels; end
     if isfield(cp,'scores'), scores = cp.scores; end
     if isfield(cp,'evals'), evals = cp.evals; end
+    if isfield(cp,'normConst')
+        xFft = bsxfun(@rdivide, xFft, cp.normConst);
+    end
 end
 
-% fill in default options and remaining parameters
-modelOpts.C = size(xFft,2); % number of signals
-modelOpts.W = sum(sets.train);    % # of windows
-modelOpts = fillDefaultMopts(modelOpts);
-trainOpts = fillDefaultTopts(trainOpts);
+% split into training and holdout sets
+trainData = xFft(:,:,sets.train);
+holdout = ~sets.train;
+holdoutData = xFft(:,:,holdout);
+
 
 %% Kernel learning
 % train kernels if they haven't been loaded from chkpt file
@@ -155,7 +170,7 @@ if ~exist('scores','var') && (~exist('trainIter','var') || trainIter~=Inf)
     end
     
     % update model via gradient descent
-    [evals, trainModels] = trainOpts.algorithm(labels.s,xFft(:,:,sets.train),model,...
+    [evals, trainModels] = trainOpts.algorithm(labels.s,trainData,model,...
         trainOpts,chkptFile);
     fprintf('Kernel Training Complete\n')
 end
@@ -165,7 +180,6 @@ end
 
 % initialize variables for projection
 nModels = numel(trainModels);
-holdout = ~sets.train;
 if exist('scores','var')
     % determine idx of last projected model if there are saved score projection
     % models. Initialize learned scores with scores from previous model.
@@ -187,9 +201,6 @@ while k >= lastTrainIdx(nModels,trainOpts.projectAll)
     else
         thisTrainModel = trainModels(k).kernel;
     end
-    
-    trainData = xFft(:,:,sets.train);
-    holdoutData = xFft(:,:,holdout);
     
     a = tic;
     thisTrainModel = projectCSFA(trainData,thisTrainModel,labels.s,trainOpts,...
@@ -237,26 +248,35 @@ end
 function model = initModel(modelOpts,labels,sets,xFft)
 % initialize CSFA or dCSFA model
 
-if isa(modelOpts.discrimModel,'function_handle')
+if isfield(modelOpts,'discrimModel')
     target = modelOpts.target;
-    model = GP.dCSFA(modelOpts,labels.windows.(target)(sets.train));
+    targetLabel = labels.windows.(target)(sets.train);
+    
+    %make sure targets are column vectors
+    if size(targetLabel,2) > size(targetLabel,1)
+        targetLabel = targetLabel';
+    end
+end
+
+if isa(modelOpts.discrimModel,'function_handle')
+    model = GP.dCSFA(modelOpts,targetLabel);
 else
+    xFftTrain = xFft(:,:,sets.train);
     switch modelOpts.discrimModel
         case 'none'
-            model = GP.CSFA(modelOpts, labels.s, xFft(:,:,sets.train));
+            model = GP.CSFA(modelOpts, labels.s, xFftTrain);
         case {'svm','logistic','multinomial'}
-            target = modelOpts.target;
             if isfield(modelOpts,'mixed') && modelOpts.mixed
                 group = modelOpts.group;
-                model = GP.dCSFA(modelOpts,labels.windows.(target)(sets.train),...
-                    labels.windows.(group)(sets.train));
+                model = GP.dCSFA(modelOpts,targetLabel,...
+                    labels.windows.(group)(sets.train),labels.s,xFftTrain);
             else
-                model = GP.dCSFA(modelOpts,labels.windows.(target)(sets.train));
+                model = GP.dCSFA(modelOpts,targetLabel,[],labels.s,xFftTrain);
             end
         otherwise
             warning(['Disciminitive model indicated by modelOpts.discrimModel is '...
                 'not valid. Model will be trained using GP generative model only.'])
-            model = GP.CSFA(modelOpts);
+            model = GP.CSFA(modelOpts,labels.s,xFftTrain);
     end
 end
 end

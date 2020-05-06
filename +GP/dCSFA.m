@@ -16,33 +16,58 @@ classdef dCSFA < handle
     end
     
     methods
-        function self = dCSFA(modelOpts,labels,group)
+        function self = dCSFA(modelOpts,labels,group,s,xFft)
             if nargin > 0
                 self.W = int64(modelOpts.W);
                 self.C = modelOpts.C;
                 self.Q = modelOpts.Q;
                 self.L = int64(modelOpts.L);
-                if numel(modelOpts.dIdx) ~= modelOpts.L
-                    error(['Specified number of discriminitive factors is greater than'...
-                        ' total number of factors'])
-                end
-                self.dIdx = logical(modelOpts.dIdx);
+
                 self.lambda = modelOpts.lambda;
                 
                 if isfield(modelOpts,'kernel')
                     self.kernel = modelOpts.kernel;
                 else
-                    self.kernel = GP.CSFA(modelOpts);
+                    if nargin < 4
+                        % initialize CSFA kernel randomly
+                        self.kernel = GP.CSFA(modelOpts);
+                    else
+                        % initialize using NMF on xFft
+                        self.kernel = GP.CSFA(modelOpts,s,xFft);
+                    end
                 end
                 
-                if islogical(labels)
-                    self.labels = labels;
+                % set supervised factors; if dIdx not set, assume 1 supervised factor
+                if ~isfield(modelOpts,'dIdx'); modelOpts.dIdx = 1; end
+                if length(modelOpts.dIdx) > 1
+                    % treat dIdx as boolean vector
+                    if numel(modelOpts.dIdx) ~= modelOpts.L
+                        error(['vector identifying discriminitive factors'...
+                            '(modelOpts.dIdx) does not match total number of factors'])
+                    end
+                    self.dIdx = modelOpts.dIdx;
                 else
+                    % treat dIdx as scalar giving number of supervised factors
+                    self.dIdx = util.selectDiscFactors(modelOpts.dIdx,labels,...
+                        self.kernel.scores);
+                end
+                
+                % check for binary labels
+                labelList = unique(labels);
+                if length(labelList) == 2
+                    if islogical(labels)
+                        self.labels = labels;
+                    else
+                        % convert to boolean
+                        self.labels = labels == labelList(2);
+                    end
+                else
+                    % if not binary, convert to one-hot
                     self.labels = util.oneHot(labels);
                 end
                 
                 self.classType = modelOpts.discrimModel;
-                if nargin >= 3
+                if nargin >= 3 && ~isempty(group)
                     self.group = group;
                     if strcmp(self.classType,'multinomial')
                         error(['Cannot use mixed intercept model with a multinomial ' ...
@@ -63,7 +88,11 @@ classdef dCSFA < handle
             % calculated classifier loss
             switch self.classType
                 case 'svm'
-                    [y,features] = self.balanceClasses(y,features);
+                    % remove constant term if not a mixed model
+                    if numel(unique(self.group)) == 1
+                        features = features(1:end-1,:);
+                    end
+                    
                     [~,yHat] = predict(self.classModel,features');
                     % convert boolean labels to +1/-1
                     y = y*2 - 1;
@@ -103,6 +132,19 @@ classdef dCSFA < handle
             [lb,ub] = self.kernel.getBounds;
         end
         
+        function update = updateKernels(self)
+            update = self.kernel.updateKernels;
+        end
+        
+        function update = updateScores(self)
+            update = self.kernel.updateScores;
+        end
+        
+        function setUpdateState(self, updateKernels, updateScores)
+           self.kernel.updateKernels = updateKernels;
+           self.kernel.updateScores = updateScores;
+        end
+        
         % pIdx: structure containing boolean index vectors for each 'type' of
         % parameter for which a gradient is calculated
         %   FIELDS
@@ -123,34 +165,36 @@ classdef dCSFA < handle
             else % use stochastic learning
                 [grad, condNum] = self.kernel.gradient(s,data,inds);
             end
-            features = self.getFeatures;
             
-            % choose gradient method for appropriate classifier
-            if isa(self.classType,'function_handle')
-                gradClass = zeros(self.L,self.W);
-                [self.classModel, gc] = self.classType(self.labels,features);
-                gradClass(self.dIdx,:) = gc;
-            else
-                switch self.classType
-                    case 'svm'
-                        gradClass = self.svmGradient(self.labels,features);
-                    case 'logistic'
-                        gradClass = self.logisticGradient(self.labels,features);
-                    case 'multinomial'
-                        gradClass = self.multiGradient(self.labels,features);
+            if self.updateScores
+                features = self.getFeatures;
+                
+                % choose gradient method for appropriate classifier
+                if isa(self.classType,'function_handle')
+                    gradClass = zeros(self.L,self.W);
+                    [self.classModel, gc] = self.classType(self.labels,features);
+                    gradClass(self.dIdx,:) = gc;
+                else
+                    switch self.classType
+                        case 'svm'
+                            gradClass = self.svmGradient(self.labels,features);
+                        case 'logistic'
+                            gradClass = self.logisticGradient(self.labels,features);
+                        case 'multinomial'
+                            gradClass = self.multiGradient(self.labels,features);
+                    end
                 end
+                
+                % if using stochastic learning, only update scores in current batch
+                if nargin >=4
+                    indsMask = false(1,self.W);
+                    indsMask(inds) = true;
+                    gradClass(:,~indsMask) = 0;
+                end
+                
+                grad(end-self.L*self.W+1:end) = grad(end-self.L*self.W+1:end) - ...
+                    self.lambda*reshape(gradClass,[self.L*self.W,1]);
             end
-            
-            % if using stochastic learning, only update scores in current batch
-            if nargin >=4
-                indsMask = false(1,self.W);
-                indsMask(inds) = true;
-                gradClass(:,~indsMask) = 0;
-            end
-            
-            grad(end-self.L*self.W+1:end) = grad(end-self.L*self.W+1:end) - ...
-                self.lambda*reshape(gradClass,[self.L*self.W,1]);
-            
         end
         
         function makeIdentifiable(self)
@@ -158,16 +202,24 @@ classdef dCSFA < handle
         end
         
         function grad = svmGradient(self,thisLabel,features)
-            % Get gradient of classifier loss w/ respect to scores
-            [labelsSVM,scoresSVM] = self.balanceClasses(thisLabel,features);
+            % remove constant term if not a mixed model
+            if numel(unique(self.group)) == 1
+                features = features(1:end-1,:);
+            end
+            
+            % 1) convert boolean labels to +1/-1
+            y = thisLabel*2 - 1;
             
             % 2) obtain the SVM weights on classifying factor scores
-            cmodel = fitcsvm(scoresSVM',labelsSVM);
+            cmodel = fitcsvm(features', y, 'KernelFunction', 'linear', 'Prior','uniform',...
+                'CacheSize','maximal');
             self.classModel = cmodel; % store classification model
             
             % 3) compute gradient of this hinge loss function
-            lossInd = (1 - (thisLabel .* (features'*abs(cmodel.Beta) + cmodel.Bias))) > 0; % find support vectors
-            gradHL = -1 * bsxfun(@times, (lossInd .* thisLabel)',abs(cmodel.Beta)) .* features; % take gradient of hinge loss function
+            % find support vectors
+            sv = cmodel.IsSupportVector;
+            % take gradient of hinge loss function
+            gradHL = sv .* (-y*cmodel.Beta');
             
             % 4) inject gradient of hinge loss into kernel gradient
             grad = zeros(self.L,self.W);
@@ -206,27 +258,9 @@ classdef dCSFA < handle
         
         function features = getFeatures(self)
             % get features for classifier
-            params = self.kernel.getParams; % obtain current parameter value vector
-            % extract the log of factor scores from parameter values
-            scores = reshape(params(end-self.L*self.W+1:end),[self.L, ...
-                self.W]);
+            scores = self.kernel.scores; 
             scores = scores(self.dIdx,:); % (gradients taken wrt log scores)
             features = [scores' util.oneHot(self.group)']';
-        end
-        
-        function [labelsBal, featuresBal] = balanceClasses(self,labels,features)
-            % if more negative examples than positive example,
-            % upsample positive examples, or vice versa
-            if sum(labels==1) < sum(labels==0)
-                [~,idx] = datasample(features,sum(labels==0),2,'Weights',double(labels));
-                labelsBal = [labels(idx); labels(labels==0)];
-                featuresBal = [features(:,idx), features(:,labels==0)];
-            else % if more positive examples than negative
-                % examples, upsample negative examples
-                [~,idx] = datasample(features,sum(labels==1),2,'Weights',double(labels==0));
-                labelsBal = [labels(labels==1); labels(idx)];
-                featuresBal = [features(:,labels==1), features(:,idx)];
-            end
         end
         
         % Make a copy of a handle object.

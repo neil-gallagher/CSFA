@@ -76,7 +76,7 @@ classdef CSFA < handle & GP.spectrumPlots
                     % normalize components and scores by max power in a channel
                     % for that component
                     compWeights = reshape(compInit', [], self.C, self.L);
-                    compNorm = max(sum(compWeights, 1), [], 2);
+                    compNorm = max(max(compWeights, [], 1), [], 2);
                     compWeights = bsxfun(@rdivide, compWeights, compNorm);
                     compNorm = reshape(compNorm, 1, self.L);
                     scoreInit = bsxfun(@times, scoreInit, compNorm);
@@ -114,8 +114,7 @@ classdef CSFA < handle & GP.spectrumPlots
                             modelOpts.R,coregs,kernels,inf);
                         self.LMCkernels{l}.updateNoise = false;
                         
-                        normConst = self.LMCkernels{l}.normalizeCovariance();
-                        %scoreInit(:,l) = scoreInit(:,l)*normConst;
+                        self.LMCkernels{l}.normalizeCovariance();
                     end
                     
                     self.scores = scoreInit';
@@ -483,6 +482,11 @@ classdef CSFA < handle & GP.spectrumPlots
             if self.updateNoise
                 grad = vertcat(ngrad, grad);
             end
+        end
+        
+        function setUpdateState(self, updateKernels, updateScores)
+           self.updateKernels = updateKernels;
+           self.updateScores = updateScores;
         end
         
         % normalize factors for identifiability

@@ -3,13 +3,14 @@ function trainOpts = fillDefaultTopts(trainOpts)
 %   trainOpts : structure of options for the learning
 %       algorithm
 %       FIELDS
-%       iters: total number of iteration. Default: 50,000
+%       iters: total number of iteration. Default: 1000
 %       evalInterval(2): interval at which to evaluate likelihood and save a
 %           checkpoint. evalInterval2 corresponds to score projection
 %           following initial kernel learning. If evalInterval2 is not given,
-%           defaults to the value set for evalInterval. evalInterval Default: 10
+%           defaults to the value set for evalInterval. evalInterval
+%           Default: 20
 %       saveInterval: interval at which to save intermediate models during
-%           training. Default: 50
+%           training. Default: 100
 %       convThresh(2), convClock(2): training stops if the objective function
 %           does not increase by 'convThresh' after 'convClock'
 %           evaluations of the log likelihood. convThresh2 and
@@ -22,20 +23,23 @@ function trainOpts = fillDefaultTopts(trainOpts)
 %           Example: [evals,trainModels] = trainOpts.algorithm(labels.s,...
 %                          xFft(:,:,sets.train),model,trainOpts,chkptFile);
 %       stochastic: boolean indicating to train using mini-batches.
-%           Default: false
+%           Default: true
 %       batchSize: (only used if stochastic = true) mini-batch size
-%           for stochastic algorithms. Default: 500.
+%           for stochastic algorithms. Default: 128.
 %       projAll: boolean. If false, only learns scores from the final model
 %           (obtained after all training iterations), rather than for each
 %           intermediate model as well. Default: false
+%       normalizeData: boolean. If true, normalizes input (xFft) data so
+%           that signal within a given channel/frequency has unit power
+%           over all windows (i.e. divide by RMS).
 if ~isfield(trainOpts,'iters')
-    trainOpts.iters = 5e4;
+    trainOpts.iters = 1000;
 end
 if ~isfield(trainOpts,'saveInterval')
-    trainOpts.saveInterval = 50;
+    trainOpts.saveInterval = 100;
 end
 if ~isfield(trainOpts,'evalInterval')
-    trainOpts.evalInterval = 10;
+    trainOpts.evalInterval = 20;
 end
 if ~isfield(trainOpts,'evalInterval2')
     trainOpts.evalInterval2 = trainOpts.evalInterval;
@@ -56,12 +60,15 @@ if ~isfield(trainOpts,'algorithm')
     trainOpts.algorithm = @algorithms.adam;
 end
 if ~isfield(trainOpts,'stochastic')
-    trainOpts.stochastic = false;
+    trainOpts.stochastic = true;
 end
 if ~isfield(trainOpts,'batchSize')
     trainOpts.batchSize = 128;
 end
 if ~isfield(trainOpts,'projectAll')
     trainOpts.projectAll = false;
+end
+if ~isfield(trainOpts,'normalizeData')
+    trainOpts.normalizeData = true;
 end
 end

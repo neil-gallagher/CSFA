@@ -1,4 +1,4 @@
-function [selection,p] = selectDiscFactors(numFactors,target,scores)
+function [selection,p,sortingIndices] = selectDiscFactors(numFactors,target,scores)
 % Select Discriminatory Factors
 % This takes the CSFA generative model created in
 % trainCSFA and finds the factors with the most

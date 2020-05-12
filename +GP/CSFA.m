@@ -22,6 +22,7 @@ classdef CSFA < handle & GP.spectrumPlots
     methods
         function self = CSFA(modelOpts, s, xFft)
             GMM_MAX_ITER = 1000;
+            GMM_REG = 0.01;
             DIST_PRECISION = 1000;
             DIST_SAMPLES = 1e5;
             
@@ -75,7 +76,7 @@ classdef CSFA < handle & GP.spectrumPlots
                     
                     % normalize components and scores by max power in a channel
                     % for that component
-                    compWeights = reshape(compInit', [], self.C, self.L);
+                    compWeights = reshape(compInit', sum(modelFreqs), self.C, self.L);
                     compNorm = max(max(compWeights, [], 1), [], 2);
                     compWeights = bsxfun(@rdivide, compWeights, compNorm);
                     compNorm = reshape(compNorm, 1, self.L);
@@ -91,7 +92,7 @@ classdef CSFA < handle & GP.spectrumPlots
                         % model component frequency usage via GMM
                         gmOpts = statset('MaxIter',GMM_MAX_ITER);
                         gmmodel = fitgmdist(simDist', self.Q,'Options',gmOpts,...
-                            'RegularizationValue', 0.01);
+                            'RegularizationValue', GMM_REG);
                         means = num2cell( reshape(gmmodel.mu, 1, self.Q));
                         vars = num2cell( reshape(gmmodel.Sigma, 1, self.Q));
                         bWeight = gmmodel.ComponentProportion;

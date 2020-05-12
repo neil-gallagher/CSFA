@@ -100,17 +100,29 @@ while (iter <= opts.iters) && (convCntr < opts.convClock)
     
     % occasionally check performance
     if mod(iter,opts.evalInterval)==0
-        thisEval = model.evaluate(x,yAll)/W;
+        if isa(model, 'GP.dCSFA')
+            [thisEval, cLoss] = model.evaluate(x,yAll);
+            thisEval = thisEval/W;
+        else
+            thisEval = model.evaluate(x,yAll)/W;
+        end
         evals(iter) = thisEval;
+            
         if opts.stochastic
             winsComplete = iter*opts.batchSize;
             fprintf(['Iter #%5d/%d - %.1f Epochs Completed - Time:%4.1fs - Avg. LL:%4.4g' ...
-                ' - Max Cond. #: %.3g\n'], iter, opts.iters, winsComplete/W, ...
-                toc, thisEval, condNum(iter));
+                ' - Max Cond. #: %.3g'], iter, opts.iters, winsComplete/W, ...
+                toc, thisEval, condNum(iter))
         else
-            fprintf('Iter #%5d/%d - Time:%4.1fs - Avg. LL:%4.4g - Max Cond. #: %.3g\n',...
-                iter, opts.iters, toc, thisEval, condNum(iter));
+            fprintf('Iter #%5d/%d - Time:%4.1fs - Avg. LL:%4.4g - Max Cond. #: %.3g',...
+                iter, opts.iters, toc, thisEval, condNum(iter))
         end
+        if isa(model, 'GP.dCSFA')
+            fprintf(' - Sup. Loss:%4.4g \n', cLoss)
+        else
+            fprintf('\n')
+        end
+        
         if nargin >= 6
             cp.evals = evals;
         end

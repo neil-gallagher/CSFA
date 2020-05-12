@@ -80,7 +80,7 @@ classdef dCSFA < handle
             end
         end
         
-        function res = evaluate(self,s,dat)
+        function [res, cLoss] = evaluate(self,s,dat)
             % evaluate objective function
             y = self.labels;
             features = self.getFeatures();
@@ -93,23 +93,23 @@ classdef dCSFA < handle
                         features = features(1:end-1,:);
                     end
                     
-                    [~,yHat] = predict(self.classModel,features');
                     % convert boolean labels to +1/-1
                     y = y*2 - 1;
-                    loss = sum(max(0,1-y.*yHat(:,1)));
+                    m = margin(self.classModel, features', y)/2;
+                    cLoss = sum(max(0,1-m));
                     % hinge loss
                 case 'logistic'
                     % assumes boolean labels
                     yHat = self.classModel.Fitted.Probability;
-                    loss = sum(-y.*log(yHat+eps) + (1-y).*log(1-yHat+eps));
+                    cLoss = sum(-y.*log(yHat+eps) - (1-y).*log(1-yHat+eps));
                     % cross-entropy
                 case 'multinomial'
                     yHat = mnrval(self.classModel,features(1:end-1,:)');
-                    loss = sum(sum(-y.*log(yHat'+eps)));
+                    cLoss = sum(sum(-y.*log(yHat'+eps)));
                     % cross-entropy
             end
             
-            res = self.kernel.evaluate(s,dat) - self.lambda*loss;
+            res = self.kernel.evaluate(s,dat) - self.lambda*cLoss;
         end
         
         function res = getParams(self)
@@ -165,7 +165,7 @@ classdef dCSFA < handle
             else % use stochastic learning
                 [grad, condNum] = self.kernel.gradient(s,data,inds);
             end
-            
+
             if self.updateScores
                 features = self.getFeatures;
                 
@@ -192,8 +192,8 @@ classdef dCSFA < handle
                     gradClass(:,~indsMask) = 0;
                 end
                 
-                grad(end-self.L*self.W+1:end) = grad(end-self.L*self.W+1:end) - ...
-                    self.lambda*reshape(gradClass,[self.L*self.W,1]);
+                scoreIdx = self.getParamIdx.scores;
+                grad(scoreIdx) = grad(scoreIdx) - self.lambda*reshape(gradClass,[self.L*self.W,1]);
             end
         end
         
@@ -202,6 +202,7 @@ classdef dCSFA < handle
         end
         
         function grad = svmGradient(self,thisLabel,features)
+            %global gradCheck
             % remove constant term if not a mixed model
             if numel(unique(self.group)) == 1
                 features = features(1:end-1,:);
@@ -224,10 +225,15 @@ classdef dCSFA < handle
             % 4) inject gradient of hinge loss into kernel gradient
             grad = zeros(self.L,self.W);
             grad(self.dIdx,:) = gradHL;
+            
+%             if strcmp(gradCheck,'svm')
+%                 util.gradientCheckSVM
+%             end
         end
         
         
         function grad = logisticGradient(self,thisLabel,features)
+%             global gradCheck
             self.classModel = fitglm(features',thisLabel,'Distribution','binomial',...
                 'Intercept',false);
             b = self.classModel.Coefficients.Estimate;
@@ -241,6 +247,10 @@ classdef dCSFA < handle
             % 4) inject gradient of hinge loss into kernel gradient
             grad = zeros(self.L,self.W);
             grad(self.dIdx,:) = gradCE;
+            
+%             if strcmp(gradCheck,'logistic')
+%                 util.gradientCheckLogistic
+%             end
         end
         
         function grad = multiGradient(self,thisLabel,features)

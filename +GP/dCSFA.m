@@ -13,6 +13,7 @@ classdef dCSFA < handle
         classModel % classifier
         classType % type of classifier (svm or logistic)
         group % groups for mixed-intercept models
+        scoreNorm % normalization constant applied to scores before input to classifier
     end
     
     methods
@@ -212,7 +213,7 @@ classdef dCSFA < handle
             y = thisLabel*2 - 1;
             
             % 2) obtain the SVM weights on classifying factor scores
-            cmodel = fitcsvm(features', y, 'KernelFunction', 'linear', 'Prior','uniform',...
+            cmodel = fitcsvm(features', y, 'KernelFunction','linear', 'Prior','uniform',...
                 'CacheSize','maximal');
             self.classModel = cmodel; % store classification model
             
@@ -220,11 +221,12 @@ classdef dCSFA < handle
             % find support vectors
             sv = cmodel.IsSupportVector;
             % take gradient of hinge loss function
-            gradHL = sv .* (-y*cmodel.Beta');
+            normBeta = cmodel.Beta ./ self.scoreNorm;
+            gradHL = sv .* (-y*normBeta');
             
             % 4) inject gradient of hinge loss into kernel gradient
             grad = zeros(self.L,self.W);
-            grad(self.dIdx,:) = gradHL;
+            grad(self.dIdx,:) = gradHL';
             
 %             if strcmp(gradCheck,'svm')
 %                 util.gradientCheckSVM
@@ -238,11 +240,14 @@ classdef dCSFA < handle
                 'Intercept',false);
             b = self.classModel.Coefficients.Estimate;
             nDFactors = sum(self.dIdx);
+            
+            % remove coefficients for non-score features
             coeffs = b(1:nDFactors);
+            normCoeffs = coeffs./self.scoreNorm;
             
             % 3) gradient of cross-entropy loss
             yHat = self.classModel.Fitted.Probability;
-            gradCE = -coeffs*(thisLabel - yHat)';
+            gradCE = -normCoeffs*(thisLabel - yHat)';
             
             % 4) inject gradient of hinge loss into kernel gradient
             grad = zeros(self.L,self.W);
@@ -259,7 +264,8 @@ classdef dCSFA < handle
             
             % 3) gradient of cross-entropy loss
             yHat = mnrval(self.classModel,features');
-            gradCE = -self.classModel(2:end,:)*(thisLabel(1:end-1,:) - yHat(:,1:end-1)');
+            normCoeffs = self.classModel(2:end,:)./self.scoreNorm;
+            gradCE = -normCoeffs*(thisLabel(1:end-1,:) - yHat(:,1:end-1)');
             
             % 4) inject gradient of hinge loss into kernel gradient
             grad = zeros(self.L,self.W);
@@ -269,7 +275,11 @@ classdef dCSFA < handle
         function features = getFeatures(self)
             % get features for classifier
             scores = self.kernel.scores; 
-            scores = scores(self.dIdx,:); % (gradients taken wrt log scores)
+            scores = scores(self.dIdx,:);
+            
+            %normalize scores by rms values
+            self.scoreNorm = sqrt(mean(scores.^2, 2));
+            scores = bsxfun(@rdivide, scores, self.scoreNorm);
             features = [scores' util.oneHot(self.group)']';
         end
         

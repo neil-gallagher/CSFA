@@ -17,6 +17,9 @@ if isa(target, 'cell')
     target = categorical(target);
 end
 
+% 
+
+
 % get unique identifiers for all classes. consider binary case as one class
 uniqueClasses = unique(target);
 C = numel(uniqueClasses);
@@ -31,7 +34,8 @@ for c = 1:C
     thisClassLabel = target == uniqueClasses(c);
     
     for s = 1:L
-        p(s, c) = ranksum(scores(s, thisClassLabel), scores(s, ~thisClassLabel));
+        [~, thisP] = ttest2(scores(s, thisClassLabel), scores(s, ~thisClassLabel));
+        p(s, c) = thisP;
     end
 end
 

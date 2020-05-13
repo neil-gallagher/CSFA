@@ -57,7 +57,7 @@ if ~isfield(trainOpts,'convClock2')
     trainOpts.convClock2 = trainOpts.convClock;
 end
 if ~isfield(trainOpts,'algorithm')
-    trainOpts.algorithm = @algorithms.adam;
+    trainOpts.algorithm = @algorithms.rprop;
 end
 if ~isfield(trainOpts,'stochastic')
     trainOpts.stochastic = true;

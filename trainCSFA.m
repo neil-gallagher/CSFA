@@ -112,6 +112,7 @@ loadFile = addExt(loadFile);
 load(loadFile,'xFft','labels')
 nWin = size(xFft,3);
 sets = loadSets(saveFile,loadFile,nWin);
+holdout = ~sets.train;
 
 % initialize options structures if not given as inputs
 if nargin < 4
@@ -153,12 +154,6 @@ else
     end
 end
 
-% split into training and holdout sets
-trainData = xFft(:,:,sets.train);
-holdout = ~sets.train;
-holdoutData = xFft(:,:,holdout);
-
-
 %% Kernel learning
 % train kernels if they haven't been loaded from chkpt file
 if ~exist('scores','var') && (~exist('trainIter','var') || trainIter~=Inf)
@@ -170,7 +165,7 @@ if ~exist('scores','var') && (~exist('trainIter','var') || trainIter~=Inf)
     end
     
     % update model via gradient descent
-    [evals, trainModels] = trainOpts.algorithm(labels.s,trainData,model,...
+    [evals, trainModels] = trainOpts.algorithm(labels.s,xFft(:,:,sets.train),model,...
         trainOpts,chkptFile);
     fprintf('Kernel Training Complete\n')
 end
@@ -203,11 +198,11 @@ while k >= lastTrainIdx(nModels,trainOpts.projectAll)
     end
     
     a = tic;
-    thisTrainModel = projectCSFA(trainData,thisTrainModel,labels.s,trainOpts,...
+    thisTrainModel = projectCSFA(xFft(:,:,sets.train),thisTrainModel,labels.s,trainOpts,...
         thisTrainModel.scores);
     scores(:,sets.train,k) = thisTrainModel.scores;
     
-    holdoutModel = projectCSFA(holdoutData,thisTrainModel,labels.s,trainOpts,...
+    holdoutModel = projectCSFA(xFft(:,:,holdout),thisTrainModel,labels.s,trainOpts,...
         initScores);
     scores(:,holdout,k) = holdoutModel.scores;
     

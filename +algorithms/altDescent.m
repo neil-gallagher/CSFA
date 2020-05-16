@@ -41,6 +41,9 @@ trainModels(nModelSaves) = model;
 saveIdx = 1;
 
 evals = zeros(1,opts.iters);
+if isa(model, 'GP.dCSFA')
+    sEvals = zeros(opts.iters, model.S);
+end
 condNum = zeros(1,opts.iters);
 W = size(yAll,3);
 tic
@@ -54,6 +57,9 @@ if nargin >= 6
         iter = cp.trainIter;
         if isfield(cp,'trainModels'), trainModels = cp.trainModels; end
         if isfield(cp,'evals'), evals = cp.evals; end
+        if isa(model, 'GP.dCSFA')
+            if isfield(cp,'sEvals'), sEvals = cp.sEvals; end
+        end
     end
 end
 
@@ -103,6 +109,7 @@ while (iter <= opts.iters) && (convCntr < opts.convClock)
         if isa(model, 'GP.dCSFA')
             [thisEval, cLoss] = model.evaluate(x,yAll);
             thisEval = thisEval/W;
+            sEvals(iter,:) = cLoss;
         else
             thisEval = model.evaluate(x,yAll)/W;
         end
@@ -118,13 +125,15 @@ while (iter <= opts.iters) && (convCntr < opts.convClock)
                 iter, opts.iters, toc, thisEval, condNum(iter))
         end
         if isa(model, 'GP.dCSFA')
-            fprintf(' - Sup. Loss:%4.4g \n', cLoss)
-        else
-            fprintf('\n')
+            fprintf(' - Sup. Loss:%4.4g', cLoss)
         end
+        fprintf('\n')
         
         if nargin >= 6
             cp.evals = evals;
+            if isa(model, 'GP.dCSFA')
+                cp.sEvals = sEvals;
+            end
         end
         
         % convergence check
@@ -162,9 +171,20 @@ iter = iter - 1;
 if isfinite(iter)
     % save final results if necessary
     if mod(iter,opts.evalInterval)~=0
-        evals(iter) = model.evaluate(x,yAll)/W;
+        if isa(model, 'GP.dCSFA')
+            [thisEval, cLoss] = model.evaluate(x,yAll);
+            thisEval = thisEval/W;
+            sEvals(iter,:) = cLoss;
+        else
+            thisEval = model.evaluate(x,yAll)/W;
+        end
+        evals(iter) = thisEval;
+        
         if nargin >= 6
             cp.evals = evals;
+            if isa(model, 'GP.dCSFA')
+                cp.sEvals = sEvals;
+            end
         end
     end
     if mod(iter,opts.saveInterval)~=0
@@ -176,7 +196,7 @@ if isfinite(iter)
         end
     end
     if nargin >= 6
-        cp.params = params;
+        cp.params = model.getParams();
         cp.trainIter = Inf;
         save(chkptfile,'-struct','cp')
     end

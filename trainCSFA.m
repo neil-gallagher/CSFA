@@ -123,22 +123,13 @@ if nargin < 3
 end
 
 if nargin < 5
-    % initialize matfile for checkpointing
-    chkptFile = generateCpFilename(saveFile)
-    save(chkptFile,'modelOpts','trainOpts','sets')
-    
     % fill in default options and remaining parameters
     modelOpts.C = size(xFft,2); % number of signals
     modelOpts.W = sum(sets.train);    % # of windows
-    modelOpts = fillDefaultMopts(modelOpts);
-    trainOpts = fillDefaultTopts(trainOpts);
     
-    if trainOpts.normalizeData
-        % normalize data to have unit power for each channel/frequency
-        normConst = sqrt(mean(abs(xFft).^2,3));
-        xFft = bsxfun(@rdivide, xFft, normConst);
-        save(chkptFile,'normConst','-append')
-    end
+    % initialize matfile for checkpointing
+    chkptFile = generateCpFilename(saveFile)
+    save(chkptFile,'modelOpts','trainOpts','sets')
 else
     % load info from checkpoint file
     chkptFile = addExt(chkptFile)
@@ -152,6 +143,16 @@ else
     if isfield(cp,'normConst')
         xFft = bsxfun(@rdivide, xFft, cp.normConst);
     end
+end
+
+modelOpts = fillDefaultMopts(modelOpts);
+trainOpts = fillDefaultTopts(trainOpts);
+
+if nargin<5 && trainOpts.normalizeData
+    % normalize data to have unit power for each channel/frequency
+    normConst = sqrt(mean(abs(xFft).^2,3));
+    xFft = bsxfun(@rdivide, xFft, normConst);
+    save(chkptFile,'normConst','-append')
 end
 
 %% Kernel learning
@@ -221,6 +222,7 @@ if ~trainOpts.projectAll
 end
 end
 
+
 function sets = loadSets(saveFile,loadFile,nWin)
 % load validation set options
 
@@ -240,33 +242,52 @@ else
 end
 end
 
-function model = initModel(modelOpts,labels,sets,xFft)
-% initialize CSFA or dCSFA model
+function labelArr = compileLabels(id, labels, trainIdx)
+id = toCell(id);
 
-if isfield(modelOpts,'discrimModel')  && ~strcmp(modelOpts.discrimModel,'none')
-    target = modelOpts.target;
-    targetLabel = labels.windows.(target)(sets.train);
+K = length(id);
+labelArr = cell(1,K);
+for k = 1:K
+    if strcmp(id{k}, 'all')
+        labelArr{k} = ones(sum(trainIdx),1);
+    else
+        labelArr{k} = labels.windows.(id{k})(trainIdx);
     
-    %make sure targets are column vectors
-    if size(targetLabel,2) > size(targetLabel,1)
-        targetLabel = targetLabel';
+        %make sure labels are column vectors
+        if size(labelArr{k},2) > size(labelArr{k},1)
+            labelArr{k} = labelArr{k}';
+        end
     end
 end
+end
 
-if isa(modelOpts.discrimModel,'function_handle')
+
+function model = initModel(modelOpts, labels, sets, xFft)
+% initialize CSFA or dCSFA model
+
+% if supervised, set up target labels and supervision window mask
+modelOpts.discrimModel = toCell(modelOpts.discrimModel);
+if ~strcmp(modelOpts.discrimModel{1},'none')
+    targetLabel = compileLabels(modelOpts.target, labels, sets.train);
+    
+    iwsCell = compileLabels(modelOpts.supervisedWindows,labels,sets.train);
+    modelOpts.isWindowSupervised = cell2mat(cellfun(@(x) logical(x), iwsCell,...
+        'UniformOutput',false));
+end
+
+if isa(modelOpts.discrimModel{1},'function_handle')
     model = GP.dCSFA(modelOpts,targetLabel);
 else
     xFftTrain = xFft(:,:,sets.train);
-    switch modelOpts.discrimModel
+    switch modelOpts.discrimModel{1}
         case 'none'
             model = GP.CSFA(modelOpts, labels.s, xFftTrain);
-        case {'svm','logistic','multinomial'}
-            if isfield(modelOpts,'mixed') && modelOpts.mixed
-                group = modelOpts.group;
-                model = GP.dCSFA(modelOpts,targetLabel,...
-                    labels.windows.(group)(sets.train),labels.s,xFftTrain);
+        case {'svm', 'logistic', 'multinomial'}
+            if isfield(modelOpts, 'group')               
+                group = compileLabels(modelOpts.group, labels, sets.train);
+                model = GP.dCSFA(modelOpts, targetLabel, group, labels.s, xFftTrain);
             else
-                model = GP.dCSFA(modelOpts,targetLabel,[],labels.s,xFftTrain);
+                model = GP.dCSFA(modelOpts, targetLabel, [], labels.s, xFftTrain);
             end
         otherwise
             warning(['Disciminitive model indicated by modelOpts.discrimModel is '...
@@ -303,11 +324,14 @@ if ~isfield(modelOpts,'highFreq'), modelOpts.highFreq = 50; end
 if ~isfield(modelOpts,'maxW')
     modelOpts.maxW = min(modelOpts.W,1e4);
 end
-if ~isfield(modelOpts,'discrimModel')
-    modelOpts.discrimModel = 'none';
-end
-if ~isfield(modelOpts,'learnNoise')
-    modelOpts.learnNoise = true;
+if ~isfield(modelOpts,'learnNoise'), modelOpts.learnNoise = true; end
+if ~isfield(modelOpts,'discrimModel'), modelOpts.discrimModel = 'none'; end
+
+if ~strcmp(modelOpts.discrimModel, 'none')
+% set default dCSFA parameters
+   if ~isfield(modelOpts,'lambda'), modelOpts.lambda = 1e3; end
+   if ~isfield(modelOpts,'dIdx'), modelOpts.dIdx = 1; end
+   if ~isfield(modelOpts,'supervisedWindows'), modelOpts.supervisedWindows = 'all'; end
 end
 end
 
@@ -323,6 +347,12 @@ if projectAll
     idx = 1;
 else
     idx = nModels;
+end
+end
+
+function obj = toCell(obj)
+if ~isa(obj, 'cell')
+    obj = {obj};
 end
 end
 

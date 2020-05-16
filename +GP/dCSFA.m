@@ -4,16 +4,18 @@ classdef dCSFA < handle
         C % number of channels
         Q % number of components in SM kernel
         L % number of factors in mixture
+        kernel % CSFA kernel        
+        
         dIdx % indicies of predictive factors
-        lambda % lagrange multiplier (SVM tuning parameter)
-        
-        kernel % CSFA kernel
-        
+        S % number of supervised sub-models
+        lambda % supervision strength
         labels % labels for training classifier
-        classModel % classifier
+        classModel % classifier(s)
         classType % type of classifier (svm or logistic)
         group % groups for mixed-intercept models
-        scoreNorm % normalization constant applied to scores before input to classifier
+        isMixed % indicates if each supervised model has a mixed intercept
+        scoreNorm % normalization applied to scores before input to classifier
+        isWindowSupervised % indicates which windows to supervise
     end
     
     methods
@@ -24,7 +26,34 @@ classdef dCSFA < handle
                 self.Q = modelOpts.Q;
                 self.L = int64(modelOpts.L);
 
-                self.lambda = modelOpts.lambda;
+                S = size(labels,2);
+                if isa(labels, 'cell') && (S>1 || size(labels,1)==1)
+                    self.encodeLabels(labels)
+                    self.S = S;
+                else
+                % if multiple sets of labels aren't provided
+                % pass as single cell entry
+                    self.encodeLabels({labels})
+                    self.S = 1;
+                end
+                
+                % duplicate lambda if necessary
+                if self.S>1 && numel(modelOpts.lambda)==1
+                    self.lambda = repmat(modelOpts.lambda,1,self.S);
+                else
+                    self.lambda = modelOpts.lambda;
+                end
+                
+                % if isWindowSupervised provided, check if duplication necessary
+                if isfield(modelOpts, 'isWindowSupervised')
+                    if self.S>1 && size(modelOpts.isWindowSupervised,2)==1
+                        self.isWindowSupervised = repmat(modelOpts.isWindowSupervised,1,self.S);
+                    else
+                        self.isWindowSupervised = modelOpts.isWindowSupervised;
+                    end
+                else % set all windows to supervised
+                    self.isWindowSupervised = ones(self.W, self.S);
+                end
                 
                 if isfield(modelOpts,'kernel')
                     self.kernel = modelOpts.kernel;
@@ -38,8 +67,7 @@ classdef dCSFA < handle
                     end
                 end
                 
-                % set supervised factors; if dIdx not set, assume 1 supervised factor
-                if ~isfield(modelOpts,'dIdx'); modelOpts.dIdx = 1; end
+                % set supervised factors
                 if length(modelOpts.dIdx) > 1
                     % treat dIdx as boolean vector
                     if numel(modelOpts.dIdx) ~= modelOpts.L
@@ -49,68 +77,94 @@ classdef dCSFA < handle
                     self.dIdx = modelOpts.dIdx;
                 else
                     % treat dIdx as scalar giving number of supervised factors
-                    self.dIdx = util.selectDiscFactors(modelOpts.dIdx,labels,...
+                    % choose supervised factors based on first supervision objective
+                    self.dIdx = util.selectDiscFactors(modelOpts.dIdx,labels{1},...
                         self.kernel.scores);
                 end
-                
-                % check for binary labels
-                labelList = unique(labels);
-                if length(labelList) == 2
-                    if islogical(labels)
-                        self.labels = labels;
-                    else
-                        % convert to boolean
-                        self.labels = labels == labelList(2);
-                    end
-                else
-                    % if not binary, convert to one-hot
-                    self.labels = util.oneHot(labels);
+
+                if numel(modelOpts.discrimModel)~=self.S
+                    error(['Must have an entry in modelOpts.discrimModel for each '...
+                        'discriminative task'])
                 end
-                
                 self.classType = modelOpts.discrimModel;
+                
                 if nargin >= 3 && ~isempty(group)
+                    if S>1 && size(group,2)==1
+                        self.group = repmat(group,1,self.S);
+                    elseif isa(group,'cell')
+                        self.group = group;
+                    else
+                        error('group parameter must be a cell array')
+                    end
+                    
                     self.group = group;
-                    if strcmp(self.classType,'multinomial')
-                        error(['Cannot use mixed intercept model with a multinomial ' ...
-                            'classifier.'])
+                    
+                    for s = 1:S
+                        self.isMixed(s) = numel(unique(group{s})) > 1;
                     end
                 else
                     % all windows are same group
-                    self.group = ones(1,modelOpts.W);
+                    self.group = repmat({ones(1,modelOpts.W)}, 1, self.S);
+                    self.isMixed = false(1,self.S);
                 end
             end
         end
         
-        function [res, cLoss] = evaluate(self,s,dat)
-            % evaluate objective function
-            y = self.labels;
-            features = self.getFeatures();
-            
-            % calculated classifier loss
-            switch self.classType
-                case 'svm'
-                    % remove constant term if not a mixed model
-                    if numel(unique(self.group)) == 1
-                        features = features(1:end-1,:);
+        function encodeLabels(self, labelTypes)
+            for l = 1:length(labelTypes)
+                % check for binary labels
+                labelList = unique(labelTypes{l});
+                if length(labelList) == 2
+                    if ~islogical(labelTypes{l})
+                        % convert to boolean
+                        labelTypes{l} = labelTypes{l} == labelList(2);
                     end
-                    
-                    % convert boolean labels to +1/-1
-                    y = y*2 - 1;
-                    m = margin(self.classModel, features', y)/2;
-                    cLoss = sum(max(0,1-m));
-                    % hinge loss
-                case 'logistic'
-                    % assumes boolean labels
-                    yHat = self.classModel.Fitted.Probability;
-                    cLoss = sum(-y.*log(yHat+eps) - (1-y).*log(1-yHat+eps));
-                    % cross-entropy
-                case 'multinomial'
-                    yHat = mnrval(self.classModel,features(1:end-1,:)');
-                    cLoss = sum(sum(-y.*log(yHat'+eps)));
-                    % cross-entropy
+                else
+                    % if not binary, convert to one-hot
+                    labelTypes{l} = util.oneHot(labelTypes{l})';
+                end
             end
             
-            res = self.kernel.evaluate(s,dat) - self.lambda*cLoss;
+            self.labels = labelTypes;
+        end
+        
+        function [ll, cLoss] = evaluate(self,s,dat)
+            % evaluate objective function
+            yList = self.labels;
+                        
+            % get cumulative sum of all classifier losses
+            K = length(yList);
+            cLoss = zeros(1,K);
+            for k = 1:K
+                y = yList{k};
+                features = self.getFeatures(k);
+
+                % calculate classifier loss
+                switch self.classType{k}
+                    case 'svm'
+                        % convert boolean labels to +1/-1
+                        y = y*2 - 1;
+                        % hinge loss
+                        m = margin(self.classModel{k}, features', y)/2;
+                        hl = max(0,1-m);
+                        cLoss(k) = sum(hl(self.isWindowSupervised(:,k)));
+                        
+                    case 'logistic'
+                        % assumes boolean labels
+                        yHat = self.classModel{k}.Fitted.Probability;
+                        % cross-entropy
+                        ce = -y.*log(yHat+eps) - (1-y).*log(1-yHat+eps);
+                        cLoss(k) = sum(ce(self.isWindowSupervised(:,k)));
+                        
+                    case 'multinomial'
+                        yHat = mnrval(self.classModel{k},features');
+                        % cross-entropy
+                        ce = sum(-y'.*log(yHat'+eps));
+                        cLoss(k) = sum(ce(self.isWindowSupervised(:,k)));
+                end
+            end
+            
+            ll = self.kernel.evaluate(s,dat);
         end
         
         function res = getParams(self)
@@ -168,22 +222,30 @@ classdef dCSFA < handle
             end
 
             if self.updateScores
-                features = self.getFeatures;
+                % iterate through each set of supervised labels and add gradients
+                gradClass = zeros(self.L,self.W);
+                for k = 1:length(self.labels)
+                    thisLabels = self.labels{k};
+                    features = self.getFeatures(k);
                 
-                % choose gradient method for appropriate classifier
-                if isa(self.classType,'function_handle')
-                    gradClass = zeros(self.L,self.W);
-                    [self.classModel, gc] = self.classType(self.labels,features);
-                    gradClass(self.dIdx,:) = gc;
-                else
-                    switch self.classType
-                        case 'svm'
-                            gradClass = self.svmGradient(self.labels,features);
-                        case 'logistic'
-                            gradClass = self.logisticGradient(self.labels,features);
-                        case 'multinomial'
-                            gradClass = self.multiGradient(self.labels,features);
+                    % choose gradient method for appropriate classifier
+                    if isa(self.classType{k},'function_handle')
+                        thisGrad = zeros(self.L,self.W);
+                        [self.classModel{k}, gc] = self.classType{k}(thisLabels,features);
+                        thisGrad(self.dIdx,:) = gc;
+                    else
+                        switch self.classType{k}
+                            case 'svm'
+                                thisGrad = self.svmGradient(thisLabels,features,k);
+                            case 'logistic'
+                                thisGrad = self.logisticGradient(thisLabels,features,k);
+                            case 'multinomial'
+                                thisGrad = self.multiGradient(thisLabels,features,k);
+                        end
                     end
+                    
+                    thisGrad(:,~self.isWindowSupervised(:,k)) = 0;
+                    gradClass = gradClass + self.lambda(k)*thisGrad;
                 end
                 
                 % if using stochastic learning, only update scores in current batch
@@ -194,7 +256,7 @@ classdef dCSFA < handle
                 end
                 
                 scoreIdx = self.getParamIdx.scores;
-                grad(scoreIdx) = grad(scoreIdx) - self.lambda*reshape(gradClass,[self.L*self.W,1]);
+                grad(scoreIdx) = grad(scoreIdx) - reshape(gradClass,[self.L*self.W,1]);
             end
         end
         
@@ -202,12 +264,8 @@ classdef dCSFA < handle
             self.kernel.makeIdentifiable;
         end
         
-        function grad = svmGradient(self,thisLabel,features)
+        function grad = svmGradient(self, thisLabel, features, sIdx)
             %global gradCheck
-            % remove constant term if not a mixed model
-            if numel(unique(self.group)) == 1
-                features = features(1:end-1,:);
-            end
             
             % 1) convert boolean labels to +1/-1
             y = thisLabel*2 - 1;
@@ -215,13 +273,14 @@ classdef dCSFA < handle
             % 2) obtain the SVM weights on classifying factor scores
             cmodel = fitcsvm(features', y, 'KernelFunction','linear', 'Prior','uniform',...
                 'CacheSize','maximal');
-            self.classModel = cmodel; % store classification model
+            self.classModel{sIdx} = cmodel; % store classification model
             
             % 3) compute gradient of this hinge loss function
             % find support vectors
             sv = cmodel.IsSupportVector;
             % take gradient of hinge loss function
-            normBeta = cmodel.Beta ./ self.scoreNorm;
+            nDFactors = sum(self.dIdx);
+            normBeta = cmodel.Beta(1:nDFactors) ./ self.scoreNorm;
             gradHL = sv .* (-y*normBeta');
             
             % 4) inject gradient of hinge loss into kernel gradient
@@ -234,19 +293,18 @@ classdef dCSFA < handle
         end
         
         
-        function grad = logisticGradient(self,thisLabel,features)
-%             global gradCheck
-            self.classModel = fitglm(features',thisLabel,'Distribution','binomial',...
-                'Intercept',false);
-            b = self.classModel.Coefficients.Estimate;
-            nDFactors = sum(self.dIdx);
+        function grad = logisticGradient(self,thisLabel,features,sIdx)
+            %global gradCheck
+            self.classModel{sIdx} = fitglm(features', thisLabel, 'Distribution', 'binomial',...
+                'Intercept', ~self.isMixed(sIdx));
+            b = self.classModel{sIdx}.Coefficients.Estimate;
             
             % remove coefficients for non-score features
-            coeffs = b(1:nDFactors);
-            normCoeffs = coeffs./self.scoreNorm;
+            nDFactors = sum(self.dIdx);
+            normCoeffs = b(1:nDFactors)./self.scoreNorm;
             
             % 3) gradient of cross-entropy loss
-            yHat = self.classModel.Fitted.Probability;
+            yHat = self.classModel{sIdx}.Fitted.Probability;
             gradCE = -normCoeffs*(thisLabel - yHat)';
             
             % 4) inject gradient of hinge loss into kernel gradient
@@ -258,29 +316,32 @@ classdef dCSFA < handle
 %             end
         end
         
-        function grad = multiGradient(self,thisLabel,features)
-            features = features(1:end-1,:);
-            self.classModel = mnrfit(features',thisLabel');
+        function grad = multiGradient(self,thisLabel,features,sIdx)
+            self.classModel{sIdx} = mnrfit(features',thisLabel);
             
             % 3) gradient of cross-entropy loss
-            yHat = mnrval(self.classModel,features');
-            normCoeffs = self.classModel(2:end,:)./self.scoreNorm;
-            gradCE = -normCoeffs*(thisLabel(1:end-1,:) - yHat(:,1:end-1)');
+            yHat = mnrval(self.classModel{sIdx},features');
+            nDFactors = sum(self.dIdx);
+            normCoeffs = self.classModel{sIdx}(2:nDFactors+1,:)./self.scoreNorm;
+            gradCE = -normCoeffs*(thisLabel(:,1:end-1)' - yHat(:,1:end-1)');
             
             % 4) inject gradient of hinge loss into kernel gradient
             grad = zeros(self.L,self.W);
             grad(self.dIdx,:) = gradCE;
         end
         
-        function features = getFeatures(self)
+        function features = getFeatures(self, sIdx)
             % get features for classifier
             scores = self.kernel.scores; 
             scores = scores(self.dIdx,:);
             
             %normalize scores by rms values
             self.scoreNorm = sqrt(mean(scores.^2, 2));
-            scores = bsxfun(@rdivide, scores, self.scoreNorm);
-            features = [scores' util.oneHot(self.group)']';
+            
+            features = bsxfun(@rdivide, scores, self.scoreNorm);
+            if self.isMixed(sIdx)
+                features = [features; util.oneHot(self.group{sIdx})];
+            end
         end
         
         % Make a copy of a handle object.

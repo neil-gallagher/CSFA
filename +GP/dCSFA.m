@@ -145,20 +145,20 @@ classdef dCSFA < handle
                         % hinge loss
                         m = margin(self.classModel{k}, features', y)/2;
                         hl = max(0,1-m);
-                        cLoss(k) = sum(hl(self.isWindowSupervised(:,k)));
+                        cLoss(k) = sum(hl);
                         
                     case 'logistic'
                         % assumes boolean labels
                         yHat = self.classModel{k}.Fitted.Probability;
                         % cross-entropy
                         ce = -y.*log(yHat+eps) - (1-y).*log(1-yHat+eps);
-                        cLoss(k) = sum(ce(self.isWindowSupervised(:,k)));
+                        cLoss(k) = sum(ce);
                         
                     case 'multinomial'
                         yHat = mnrval(self.classModel{k},features');
                         % cross-entropy
                         ce = sum(-y'.*log(yHat'+eps));
-                        cLoss(k) = sum(ce(self.isWindowSupervised(:,k)));
+                        cLoss(k) = sum(ce);
                 end
             end
             
@@ -223,7 +223,7 @@ classdef dCSFA < handle
                 % iterate through each set of supervised labels and add gradients
                 gradClass = zeros(self.L,self.W);
                 for k = 1:length(self.labels)
-                    thisLabels = self.labels{k};
+                    thisLabels = self.labels{k}(self.isWindowSupervised(:,k),:);
                     features = self.getFeatures(k);
                 
                     % choose gradient method for appropriate classifier
@@ -242,7 +242,6 @@ classdef dCSFA < handle
                         end
                     end
                     
-                    thisGrad(:,~self.isWindowSupervised(:,k)) = 0;
                     gradClass = gradClass + self.lambda(k)*thisGrad;
                 end
                 
@@ -283,7 +282,7 @@ classdef dCSFA < handle
             
             % 4) inject gradient of hinge loss into kernel gradient
             grad = zeros(self.L,self.W);
-            grad(self.dIdx,:) = gradHL';
+            grad(self.dIdx, self.isWindowSupervised(:,sIdx)) = gradHL';
             
 %             if strcmp(gradCheck,'svm')
 %                 util.gradientCheckSVM
@@ -307,7 +306,7 @@ classdef dCSFA < handle
             
             % 4) inject gradient of hinge loss into kernel gradient
             grad = zeros(self.L,self.W);
-            grad(self.dIdx,:) = gradCE;
+            grad(self.dIdx, self.isWindowSupervised(:,sIdx)) = gradCE;
             
 %             if strcmp(gradCheck,'logistic')
 %                 util.gradientCheckLogistic
@@ -315,6 +314,10 @@ classdef dCSFA < handle
         end
         
         function grad = multiGradient(self,thisLabel,features,sIdx)
+            % remove labels with no representation
+            noRep = sum(thisLabel,1) == 0;
+            thisLabel(:,noRep) = [];
+            
             self.classModel{sIdx} = mnrfit(features',thisLabel);
             
             % 3) gradient of cross-entropy loss
@@ -325,20 +328,21 @@ classdef dCSFA < handle
             
             % 4) inject gradient of hinge loss into kernel gradient
             grad = zeros(self.L,self.W);
-            grad(self.dIdx,:) = gradCE;
+            grad(self.dIdx, self.isWindowSupervised(:,sIdx)) = gradCE;
         end
         
         function features = getFeatures(self, sIdx)
             % get features for classifier
-            scores = self.kernel.scores; 
-            scores = scores(self.dIdx,:);
+            scores = self.kernel.scores;
+            wSupervised = self.isWindowSupervised(:,sIdx);
+            scores = scores(self.dIdx, wSupervised);
             
             %normalize scores by rms values
             self.scoreNorm = sqrt(mean(scores.^2, 2));
             
             features = bsxfun(@rdivide, scores, self.scoreNorm);
             if self.isMixed(sIdx)
-                features = [features; util.oneHot(self.group{sIdx})];
+                features = [features; util.oneHot(self.group{sIdx}(wSupervised))];
             end
         end
         

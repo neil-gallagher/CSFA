@@ -134,7 +134,7 @@ classdef dCSFA < handle
             K = length(yList);
             cLoss = zeros(1,K);
             for k = 1:K
-                y = yList{k};
+                y = yList{k}(self.isWindowSupervised(:,k));
                 features = self.getFeatures(k);
 
                 % calculate classifier loss

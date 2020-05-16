@@ -97,10 +97,8 @@ classdef dCSFA < handle
                         error('group parameter must be a cell array')
                     end
                     
-                    self.group = group;
-                    
                     for s = 1:S
-                        self.isMixed(s) = numel(unique(group{s})) > 1;
+                        self.isMixed(s) = numel(unique(self.group{s})) > 1;
                     end
                 else
                     % all windows are same group

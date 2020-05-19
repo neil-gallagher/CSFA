@@ -149,7 +149,9 @@ classdef dCSFA < handle
                         
                     case 'logistic'
                         % assumes boolean labels
-                        yHat = self.classModel{k}.Fitted.Probability;
+                        [~,yHat] = predict(self.classModel{k}, features');
+                        trueIdx = self.classModel{k}.ClassNames;
+                        yHat = yHat(:,trueIdx);
                         % cross-entropy
                         ce = -y.*log(yHat+eps) - (1-y).*log(1-yHat+eps);
                         cLoss(k) = sum(ce);
@@ -292,17 +294,18 @@ classdef dCSFA < handle
         
         function grad = logisticGradient(self,thisLabel,features,sIdx)
             %global gradCheck
-            self.classModel{sIdx} = fitglm(features', thisLabel, 'Distribution', 'binomial',...
-                'Intercept', ~self.isMixed(sIdx));
-            b = self.classModel{sIdx}.Coefficients.Estimate;
+            self.classModel{sIdx} = fitclinear(features', thisLabel, ...
+                'Learner', 'logistic', 'Solver','lbfgs', 'FitBias', ~self.isMixed(sIdx));
+            b = self.classModel{sIdx}.Beta;
             
             % remove coefficients for non-score features
             nDFactors = sum(self.dIdx);
             normCoeffs = b(1:nDFactors)./self.scoreNorm;
             
             % 3) gradient of cross-entropy loss
-            yHat = self.classModel{sIdx}.Fitted.Probability;
-            gradCE = -normCoeffs*(thisLabel - yHat)';
+            [~,yHat] = predict(self.classModel{sIdx}, features');
+            trueIdx = self.classModel{sIdx}.ClassNames;
+            gradCE = -normCoeffs*(thisLabel - yHat(:,trueIdx))';
             
             % 4) inject gradient of hinge loss into kernel gradient
             grad = zeros(self.L,self.W);

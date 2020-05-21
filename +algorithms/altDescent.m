@@ -107,22 +107,25 @@ while (iter <= opts.iters) && (convCntr < opts.convClock)
     % occasionally check performance
     if mod(iter,opts.evalInterval)==0
         if isa(model, 'GP.dCSFA')
-            [thisEval, cLoss] = model.evaluate(x,yAll);
-            thisEval = thisEval/W;
+            [llEval, cLoss] = model.evaluate(x,yAll);
+            llEval = llEval/W;
+            cLoss = cLoss./sum(model.isWindowSupervised,1);
             sEvals(iter,:) = cLoss;
+            totalEval = llEval - cLoss*model.lambda';
         else
-            thisEval = model.evaluate(x,yAll)/W;
+            llEval = model.evaluate(x,yAll)/W;
+            totalEval = llEval;
         end
-        evals(iter) = thisEval;
+        evals(iter) = llEval;
             
         if opts.stochastic
             winsComplete = iter*opts.batchSize;
             fprintf(['Iter #%5d/%d - %.1f Epochs Completed - Time:%4.1fs - Avg. LL:%4.4g' ...
                 ' - Max Cond. #: %.3g'], iter, opts.iters, winsComplete/W, ...
-                toc, thisEval, condNum(iter))
+                toc, llEval, condNum(iter))
         else
             fprintf('Iter #%5d/%d - Time:%4.1fs - Avg. LL:%4.4g - Max Cond. #: %.3g',...
-                iter, opts.iters, toc, thisEval, condNum(iter))
+                iter, opts.iters, toc, llEval, condNum(iter))
         end
         if isa(model, 'GP.dCSFA')
             fprintf(' - Sup. Loss:%4.4g', cLoss)
@@ -137,9 +140,9 @@ while (iter <= opts.iters) && (convCntr < opts.convClock)
         end
         
         % convergence check
-        if thisEval > maxEval + opts.convThresh
+        if totalEval > maxEval + opts.convThresh
             convCntr = 0;
-            maxEval = thisEval;
+            maxEval = totalEval;
         else
             convCntr = convCntr + 1;
         end
@@ -172,13 +175,14 @@ if isfinite(iter)
     % save final results if necessary
     if mod(iter,opts.evalInterval)~=0
         if isa(model, 'GP.dCSFA')
-            [thisEval, cLoss] = model.evaluate(x,yAll);
-            thisEval = thisEval/W;
+            [llEval, cLoss] = model.evaluate(x,yAll);
+            llEval = llEval/W;
+            cLoss = cLoss./sum(model.isWindowSupervised,1);
             sEvals(iter,:) = cLoss;
         else
-            thisEval = model.evaluate(x,yAll)/W;
+            llEval = model.evaluate(x,yAll)/W;
         end
-        evals(iter) = thisEval;
+        evals(iter) = llEval;
         
         if nargin >= 6
             cp.evals = evals;

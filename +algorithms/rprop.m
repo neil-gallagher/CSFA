@@ -21,7 +21,7 @@ function [evals,trainModels] = rprop(x,y,model,opts,chkptfile)
 % Output
 %    evals - function evaluations every 'evalInterval' iterations
 %    trainModels - intermediate models saved during training
-STEP_MAX = 10;
+STEP_MAX = 1;
 STEP_MIN = 1e-6;
 
 nParams = numel(model.getParams);

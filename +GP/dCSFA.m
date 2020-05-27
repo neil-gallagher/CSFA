@@ -16,6 +16,7 @@ classdef dCSFA < handle
         isMixed % indicates if each supervised model has a mixed intercept
         scoreNorm % normalization applied to scores before input to classifier
         isWindowSupervised % indicates which windows to supervise
+        classWeights % observation weights for classifiers
     end
     
     methods
@@ -67,6 +68,15 @@ classdef dCSFA < handle
                     end
                 end
                 
+                if isfield(modelOpts,'classWeights')
+                   self.classWeights = modelOpts.classWeights;
+                else
+                    self.classWeights = cell(1,S);
+                    for s = 1:S
+                        self.classWeights{s} = ones(sum(self.isWindowSupervised(:,s)),1);
+                    end
+                end
+                
                 % set supervised factors
                 if length(modelOpts.dIdx) > 1
                     % treat dIdx as boolean vector
@@ -76,10 +86,10 @@ classdef dCSFA < handle
                     end
                     self.dIdx = modelOpts.dIdx;
                 else
-                    % treat dIdx as scalar giving number of supervised factors
-                    % choose supervised factors based on first supervision objective
-                    self.dIdx = util.selectDiscFactors(modelOpts.dIdx,labels{1},...
-                        self.kernel.scores);
+                    % only use non-adversarial supervised models for picking supervised factors
+                    nonAdv = self.lambda>0;
+                    self.dIdx = util.selectDiscFactors(modelOpts.dIdx, labels(nonAdv),...
+                        self.kernel.scores, self.isWindowSupervised(:,nonAdv));
                 end
 
                 if numel(modelOpts.discrimModel)~=self.S
@@ -271,7 +281,7 @@ classdef dCSFA < handle
             
             % 2) obtain the SVM weights on classifying factor scores
             cmodel = fitcsvm(features', y, 'KernelFunction','linear', 'Prior','uniform',...
-                'CacheSize','maximal');
+                'CacheSize','maximal', 'Weights',self.classWeights{sIdx});
             self.classModel{sIdx} = cmodel; % store classification model
             
             % 3) compute gradient of this hinge loss function
@@ -292,10 +302,11 @@ classdef dCSFA < handle
         end
         
         
-        function grad = logisticGradient(self,thisLabel,features,sIdx)
+        function grad = logisticGradient(self, thisLabel, features, sIdx)
             %global gradCheck
-            self.classModel{sIdx} = fitclinear(features', thisLabel, ...
-                'Learner', 'logistic', 'Solver','lbfgs', 'FitBias', ~self.isMixed(sIdx));
+            self.classModel{sIdx} = fitclinear(features', thisLabel, 'Prior','uniform',...
+                'Learner','logistic', 'Solver','lbfgs', 'FitBias',~self.isMixed(sIdx),...
+                'Weights', self.classWeights{sIdx});
             b = self.classModel{sIdx}.Beta;
             
             % remove coefficients for non-score features
@@ -316,7 +327,7 @@ classdef dCSFA < handle
 %             end
         end
         
-        function grad = multiGradient(self,thisLabel,features,sIdx)
+        function grad = multiGradient(self, thisLabel, features, sIdx)
             % remove labels with no representation
             noRep = sum(thisLabel,1) == 0;
             thisLabel(:,noRep) = [];

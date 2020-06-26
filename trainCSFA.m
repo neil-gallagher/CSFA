@@ -274,16 +274,24 @@ if ~strcmp(modelOpts.discrimModel{1},'none')
     modelOpts.isWindowSupervised = cell2mat(cellfun(@(x) logical(x), iwsCell,...
         'UniformOutput',false));
     
-    if modelOpts.balance
+    if isa(modelOpts.balance, 'cell') || modelOpts.balance
         T = numel(targetLabel);
         modelOpts.classWeights = cell(T,1);
         
         for t = 1:T
             % get mouse, target, and group labels to be used by each classifier
             thisIdx = modelOpts.isWindowSupervised(:,t);
-            thisG = labels.windows.(modelOpts.balance)(sets.train); thisG = thisG(thisIdx);
             thisM = labels.windows.mouse(sets.train); thisM = thisM(thisIdx);
             thisT = targetLabel{t}(thisIdx);
+            
+            % generate list of groups to recursively balance data over
+            balanceGroups = {};
+            for b = 1:numel(modelOpts.balance)
+                thisG = labels.windows.(modelOpts.balance{b})(sets.train);
+                thisG = thisG(thisIdx);
+                balanceGroups = [balanceGroups, {thisG}];
+            end
+            balanceGroups = [{thisT}, balanceGroups, {thisM}];
             
             if numel(unique(thisT)) > 2
                 warning('Multinomial classifier will not handle observations weights for balancing')
@@ -291,7 +299,7 @@ if ~strcmp(modelOpts.discrimModel{1},'none')
             end
             
             % calculate window weightings
-            modelOpts.classWeights{t} = util.balancedWeights(thisM, thisT, thisG);
+            modelOpts.classWeights{t} = util.balancedWeights(balanceGroups);
         end
     end
 end

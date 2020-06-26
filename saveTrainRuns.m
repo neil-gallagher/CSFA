@@ -20,6 +20,7 @@ end
 [pathPart,~] = strsplit(saveFile,{'\\','/'});
 cpFiles = dir([cpDir 'chkpt_*' pathPart{end}]);
 N = numel(cpFiles);
+if N < 1, return, end
 
 % load saved data and initialize list of trained models
 if exist(saveFile,'file')

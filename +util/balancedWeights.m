@@ -1,51 +1,44 @@
-function weights = balancedWeights(subjectLabel, classLabel, groupLabel)
-subName = unique(subjectLabel);
-groupList = unique(groupLabel);
-weights = zeros(length(classLabel),1);
+function weights = balancedWeights(groupList, subsetIdx)
+% For balancing sample weights. group_list should be a list of group
+% labels. The first grouping listed wil be balancde across the whole
+% dataset. The next grouping listed will be relatively balanced within each
+% individual group given by the first grouping. That pattern continues
+% iterativel so that each grouping listed is relatively balanced within
+% individual groups from the grouping that comes before it in the list.
 
-withinSubCompare = false;
-for m = subName
-    mIdx = getSubIdx(subjectLabel,m);
-    
-    % check if multiple classes per mouse.
-    if numel(unique(classLabel(mIdx))) > 1
-        %If so, switch to different weighting scheme
-        withinSubCompare = true;
-        break
-    end
-    weights(mIdx) = 1/sum(mIdx);
+% if subsetIdx not given, set to all windows
+if nargin < 2
+    subsetIdx = true(1,length(groupList{1}));
 end
 
-if withinSubCompare
-    for m = subName
-        mIdx = getSubIdx(subjectLabel,m);
-        
-        pos = mIdx(:) & classLabel(:);
-        neg = mIdx(:) & ~classLabel(:);
-        
-        weights(pos) = 1/sum(pos);
-        weights(neg) = 1/sum(neg);
-    end
-else
-    classList = unique(classLabel);
-    for c = classList'
-        cIdx = classLabel == c;
-        weights(cIdx) = weights(cIdx)/sum(cIdx);
-    end
-end
+% get list of labels balanced in this recursive iteration
+groupLabels = groupList{1};
+theseGroupLabels = groupLabels(subsetIdx);
 
-for g = groupList
-    gIdx = getSubIdx(groupLabel, g);
-    weights(gIdx) = weights(gIdx)/sum(gIdx);
-end
+% get unique groups
+groupNames = unique(theseGroupLabels);
 
-weights = weights/mean(weights);
-end
-
-function sIdx = getSubIdx(subjectLabel,m)
-    if isa(subjectLabel, 'cell')
-        sIdx = strcmp(subjectLabel, m{1});
+weights = ones(1, sum(subsetIdx));
+% for each unique group, get all associated indicies
+for g = 1:numel(groupNames)
+    if isa(groupLabels, 'cell')
+        gIdx = strcmp(groupLabels, groupNames{g});
     else
-        sIdx = subjectLabel == m;
+        gIdx = groupLabels == groupNames(g);
     end
+    gSubIdx = gIdx(subsetIdx);
+    
+    % if there are remaining groups, get those relative weights, then apply
+    % this weight
+    if numel(groupList) > 1
+       subgroupWeights = util.balancedWeights(groupList(2:end), subsetIdx(:)&gIdx(:));
+       weights(gSubIdx) = subgroupWeights ./ sum(gSubIdx);
+    else
+        % otherwise just apply this weight
+        weights(gSubIdx) = 1/sum(gSubIdx);
+    end
+end
+
+% normalize to have mean of 1
+weights = weights./mean(weights);
 end

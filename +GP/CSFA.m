@@ -13,6 +13,7 @@ classdef CSFA < handle & GP.spectrumPlots
         LMCkernels % cell array of L LMC kernels
         
         eta % additive Gaussian noise
+        regB % L1 regularization strength for coregionalization weights
         
         updateKernels % biniary indicator for kernel updates
         updateScores % biniary indicator for score updates
@@ -35,6 +36,7 @@ classdef CSFA < handle & GP.spectrumPlots
                 self.C = modelOpts.C;
                 self.Q = modelOpts.Q;
                 self.eta = modelOpts.eta;
+                self.regB = modelOpts.regB;
                 
                 % divide windows into partitions for computations
                 self.setPartitions(modelOpts.W, modelOpts.maxW);
@@ -152,7 +154,7 @@ classdef CSFA < handle & GP.spectrumPlots
         log likelihood is to be calculated. If unset, the log likelihood is
         calculated for all windows in the dataset.
         %}
-        function LL = evaluate(self,s,data,windowIdx)
+        function [LL, rLoss] = evaluate(self,s,data,windowIdx)
             nWindows = sum(self.W);
             if nargin < 4
                 windowIdx = true(1,nWindows);
@@ -208,6 +210,15 @@ classdef CSFA < handle & GP.spectrumPlots
             
             % remove machine precision complex values
             LL = real(LL);
+            
+            % calculate regularization loss
+            if self.updateKernels
+                params = self.getParams;
+                Bvals = exp(params(self.getParamIdx.coregWeights));
+                rLoss = sum(abs(Bvals(:))) * self.regB;
+            else
+                rLoss = 0;
+            end
         end
         
         %{
@@ -483,6 +494,14 @@ classdef CSFA < handle & GP.spectrumPlots
             end
             if self.updateNoise
                 grad = vertcat(ngrad, grad);
+            end
+            
+            % add regularization term (L1 reg on weights, applied to log weights)
+            if self.updateKernels
+                params = self.getParams;
+                Bidx = self.getParamIdx.coregWeights;
+                Bvals = params(Bidx);
+                grad(Bidx) = grad(Bidx) - self.regB*exp(Bvals);
             end
         end
         

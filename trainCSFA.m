@@ -274,7 +274,10 @@ if ~strcmp(modelOpts.discrimModel{1},'none')
     modelOpts.isWindowSupervised = cell2mat(cellfun(@(x) logical(x), iwsCell,...
         'UniformOutput',false));
     
-    if isa(modelOpts.balance, 'cell') || modelOpts.balance
+    if isa(modelOpts.balance, 'cell') || any(modelOpts.balance)
+        if ~isa(modelOpts.balance, 'cell')
+           modelOpts.balance = {modelOpts.balance}; 
+        end
         T = numel(targetLabel);
         modelOpts.classWeights = cell(T,1);
         
@@ -354,6 +357,7 @@ if ~isfield(modelOpts,'maxW')
     modelOpts.maxW = min(modelOpts.W,1e4);
 end
 if ~isfield(modelOpts,'learnNoise'), modelOpts.learnNoise = true; end
+if ~isfield(modelOpts,'regB'), modelOpts.regB = 100; end
 if ~isfield(modelOpts,'discrimModel'), modelOpts.discrimModel = 'none'; end
 
 if ~strcmp(modelOpts.discrimModel, 'none')

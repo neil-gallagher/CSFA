@@ -136,7 +136,7 @@ classdef dCSFA < handle
             self.labels = labelTypes;
         end
         
-        function [ll, cLoss] = evaluate(self,s,dat)
+        function [ll, rLoss, cLoss] = evaluate(self,s,dat)
             % evaluate objective function
             yList = self.labels;
                         
@@ -174,7 +174,7 @@ classdef dCSFA < handle
                 end
             end
             
-            ll = self.kernel.evaluate(s,dat);
+            [ll, rLoss] = self.kernel.evaluate(s,dat);
         end
         
         function res = getParams(self)

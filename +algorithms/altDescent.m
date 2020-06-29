@@ -41,6 +41,7 @@ trainModels(nModelSaves) = model;
 saveIdx = 1;
 
 evals = zeros(1,opts.iters);
+rEvals = zeros(1,opts.iters);
 if isa(model, 'GP.dCSFA')
     sEvals = zeros(opts.iters, model.S);
 end
@@ -57,6 +58,7 @@ if nargin >= 6
         iter = cp.trainIter;
         if isfield(cp,'trainModels'), trainModels = cp.trainModels; end
         if isfield(cp,'evals'), evals = cp.evals; end
+        if isfield(cp,'rEvals'), rEvals = cp.rEvals; end
         if isa(model, 'GP.dCSFA')
             if isfield(cp,'sEvals'), sEvals = cp.sEvals; end
         end
@@ -107,33 +109,36 @@ while (iter <= opts.iters) && (convCntr < opts.convClock)
     % occasionally check performance
     if mod(iter,opts.evalInterval)==0
         if isa(model, 'GP.dCSFA')
-            [llEval, cLoss] = model.evaluate(x,yAll);
-            llEval = llEval/W;
-            cLoss = cLoss./sum(model.isWindowSupervised,1);
+            [llEval, rLoss, cLoss] = model.evaluate(x,yAll);
             sEvals(iter,:) = cLoss;
-            totalEval = llEval - cLoss*model.lambda';
+            totalEval = llEval - cLoss*model.lambda' - rLoss*model.kernel.regB;
         else
-            llEval = model.evaluate(x,yAll)/W;
-            totalEval = llEval;
+            [llEval, rLoss] = model.evaluate(x,yAll);
+            totalEval = llEval - rLoss*model.regB;
         end
         evals(iter) = llEval;
+        rEvals(iter) = rLoss;
             
         if opts.stochastic
             winsComplete = iter*opts.batchSize;
-            fprintf(['Iter #%5d/%d - %.1f Epochs Completed - Time:%4.1fs - Avg. LL:%4.4g' ...
-                ' - Max Cond. #: %.3g'], iter, opts.iters, winsComplete/W, ...
+            fprintf(['Iter #%5d/%d - %.1f Epochs Completed - Time:%4.1fs - LL:%4.4g - '...
+                'Max Cond. #: %.3g'], iter, opts.iters, winsComplete/W, ...
                 toc, llEval, condNum(iter))
         else
-            fprintf('Iter #%5d/%d - Time:%4.1fs - Avg. LL:%4.4g - Max Cond. #: %.3g',...
+            fprintf('Iter #%5d/%d - Time:%4.1fs - LL:%4.4g - Max Cond. #: %.3g',...
                 iter, opts.iters, toc, llEval, condNum(iter))
         end
         if isa(model, 'GP.dCSFA')
             fprintf(' - Sup. Loss:%4.4g', cLoss)
         end
+        if updateKernels
+           fprintf(' - Reg. Loss:%4.4g', rLoss) 
+        end
         fprintf('\n')
         
         if nargin >= 6
             cp.evals = evals;
+            cp.rEvals = rEvals;
             if isa(model, 'GP.dCSFA')
                 cp.sEvals = sEvals;
             end
@@ -175,17 +180,17 @@ if isfinite(iter)
     % save final results if necessary
     if mod(iter,opts.evalInterval)~=0
         if isa(model, 'GP.dCSFA')
-            [llEval, cLoss] = model.evaluate(x,yAll);
-            llEval = llEval/W;
-            cLoss = cLoss./sum(model.isWindowSupervised,1);
+            [llEval, rLoss, cLoss] = model.evaluate(x,yAll);
             sEvals(iter,:) = cLoss;
         else
-            llEval = model.evaluate(x,yAll)/W;
+            [llEval, rLoss] = model.evaluate(x,yAll);
         end
         evals(iter) = llEval;
+        rEvals(iter) = rLoss;
         
         if nargin >= 6
             cp.evals = evals;
+            cp.rEvals = rEvals;
             if isa(model, 'GP.dCSFA')
                 cp.sEvals = sEvals;
             end

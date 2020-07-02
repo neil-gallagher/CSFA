@@ -6,7 +6,8 @@ classdef CSFA < handle & GP.spectrumPlots
         maxW % maximum number of time windows in a partition
         C % number of channels
         Q % number of components in SM kernel
-        L % rank of FA
+        R % rank of factor coregionalization matrices
+        L % number of factors
         scores % factor scores
         freqBounds % [low, high] frequency boundary for spectral gaussian means
         
@@ -35,6 +36,7 @@ classdef CSFA < handle & GP.spectrumPlots
                 self.L = modelOpts.L;
                 self.C = modelOpts.C;
                 self.Q = modelOpts.Q;
+                self.R = modelOpts.R;
                 self.eta = modelOpts.eta;
                 self.regB = modelOpts.regB;
                 
@@ -211,11 +213,20 @@ classdef CSFA < handle & GP.spectrumPlots
             % remove machine precision complex values
             LL = real(LL);
             
-            % calculate regularization loss
-            if self.updateKernels
+            % calculate regularization loss (only if both kernels and scores are
+            % getting updated)
+            if self.updateKernels && self.updateScores
                 params = self.getParams;
                 Bvals = exp(params(self.getParamIdx.coregWeights));
-                rLoss = sum(abs(Bvals(:))) * self.regB;
+                Bsum = sum(abs(Bvals(:)));
+                scoreSum = sum(abs(self.scores(:)));
+                weightRatio = (self.Q*self.R*self.C)/self.W;
+                rLoss = (Bsum + scoreSum*weightRatio) * self.regB;
+            elseif self.regB && (self.updateKernels || self.updateScores)
+                warning(['Regularization is applied, but either scores or kernels are ',...
+                    'not being updated. This can lead to instability and convergence ',... 
+                    'issues!'])
+                rLoss = NaN;
             else
                 rLoss = 0;
             end
@@ -228,7 +239,7 @@ classdef CSFA < handle & GP.spectrumPlots
   vector of all factor scores. K is a vector of parameters defining
   the kernels of each factor and can be broken down into the
   parameter vectors for each kernel [K1 ... KL]. Each Kl can further
-    be broken down into the vectors of parameters corresponding to the
+    be broken down into the vectors of pazrameters corresponding to the
     coregionalization matricies and the spectral gaussian components,
     (ie Kl = [Bl1 ... BlQ,kl1 ... klQ]). Blq corresponds to the qth
     coregionalization matrix of the lth factor. Each coregionalization
@@ -496,12 +507,18 @@ classdef CSFA < handle & GP.spectrumPlots
                 grad = vertcat(ngrad, grad);
             end
             
-            % add regularization term (L1 reg on weights, applied to log weights)
+            % add regularization terms (L1 reg on weights, applied to log weights)
+            % (and L1 penalty on scores)
             if self.updateKernels
                 params = self.getParams;
                 Bidx = self.getParamIdx.coregWeights;
                 Bvals = params(Bidx);
                 grad(Bidx) = grad(Bidx) - self.regB*exp(Bvals);
+            end
+            if self.updateScores
+                Sidx = self.getParamIdx.scores;
+                weightRatio = (self.Q*self.R*self.C)/self.W;
+                grad(Sidx) = grad(Sidx) - self.regB*weightRatio;
             end
         end
         

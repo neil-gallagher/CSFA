@@ -220,7 +220,7 @@ classdef CSFA < handle & GP.spectrumPlots
                 Bvals = exp(params(self.getParamIdx.coregWeights));
                 Bsum = sum(abs(Bvals(:)));
                 scoreSum = sum(abs(self.scores(:)));
-                weightRatio = (self.Q*self.R*self.C)/self.W;
+                weightRatio = (self.Q*self.R*self.C)/sum(self.W);
                 rLoss = (Bsum + scoreSum*weightRatio) * self.regB;
             elseif self.regB && (self.updateKernels || self.updateScores)
                 warning(['Regularization is applied, but either scores or kernels are ',...
@@ -517,7 +517,7 @@ classdef CSFA < handle & GP.spectrumPlots
             end
             if self.updateScores
                 Sidx = self.getParamIdx.scores;
-                weightRatio = (self.Q*self.R*self.C)/self.W;
+                weightRatio = (self.Q*self.R*self.C)/sum(self.W);
                 grad(Sidx) = grad(Sidx) - self.regB*weightRatio;
             end
         end

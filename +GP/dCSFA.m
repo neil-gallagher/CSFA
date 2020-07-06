@@ -144,33 +144,35 @@ classdef dCSFA < handle
             K = length(yList);
             cLoss = zeros(1,K);
             for k = 1:K
-                y = yList{k}(self.isWindowSupervised(:,k));
-                features = self.getFeatures(k);
-
-                % calculate classifier loss
-                switch self.classType{k}
-                    case 'svm'
-                        % convert boolean labels to +1/-1
-                        y = y*2 - 1;
-                        % hinge loss
-                        m = margin(self.classModel{k}, features', y)/2;
-                        hl = max(0,1-m);
-                        cLoss(k) = sum(hl);
-                        
-                    case 'logistic'
-                        % assumes boolean labels
-                        [~,yHat] = predict(self.classModel{k}, features');
-                        trueIdx = self.classModel{k}.ClassNames;
-                        yHat = yHat(:,trueIdx);
-                        % cross-entropy
-                        ce = -y.*log(yHat+eps) - (1-y).*log(1-yHat+eps);
-                        cLoss(k) = sum(ce);
-                        
-                    case 'multinomial'
-                        yHat = mnrval(self.classModel{k},features');
-                        % cross-entropy
-                        ce = sum(-y'.*log(yHat'+eps));
-                        cLoss(k) = sum(ce);
+                if self.lambda(k) % only apply supervision if lambda nonzero
+                    y = yList{k}(self.isWindowSupervised(:,k));
+                    features = self.getFeatures(k);
+                    
+                    % calculate classifier loss
+                    switch self.classType{k}
+                        case 'svm'
+                            % convert boolean labels to +1/-1
+                            y = y*2 - 1;
+                            % hinge loss
+                            m = margin(self.classModel{k}, features', y)/2;
+                            hl = max(0,1-m);
+                            cLoss(k) = sum(hl);
+                            
+                        case 'logistic'
+                            % assumes boolean labels
+                            [~,yHat] = predict(self.classModel{k}, features');
+                            trueIdx = self.classModel{k}.ClassNames;
+                            yHat = yHat(:,trueIdx);
+                            % cross-entropy
+                            ce = -y.*log(yHat+eps) - (1-y).*log(1-yHat+eps);
+                            cLoss(k) = sum(ce);
+                            
+                        case 'multinomial'
+                            yHat = mnrval(self.classModel{k},features');
+                            % cross-entropy
+                            ce = sum(-y'.*log(yHat'+eps));
+                            cLoss(k) = sum(ce);
+                    end
                 end
             end
             
@@ -235,26 +237,28 @@ classdef dCSFA < handle
                 % iterate through each set of supervised labels and add gradients
                 gradClass = zeros(self.L,self.W);
                 for k = 1:length(self.labels)
-                    thisLabels = self.labels{k}(self.isWindowSupervised(:,k),:);
-                    features = self.getFeatures(k);
-                
-                    % choose gradient method for appropriate classifier
-                    if isa(self.classType{k},'function_handle')
-                        thisGrad = zeros(self.L,self.W);
-                        [self.classModel{k}, gc] = self.classType{k}(thisLabels,features);
-                        thisGrad(self.dIdx,:) = gc;
-                    else
-                        switch self.classType{k}
-                            case 'svm'
-                                thisGrad = self.svmGradient(thisLabels,features,k);
-                            case 'logistic'
-                                thisGrad = self.logisticGradient(thisLabels,features,k);
-                            case 'multinomial'
-                                thisGrad = self.multiGradient(thisLabels,features,k);
+                    if self.lambda(k) % only apply supervision if lambda nonzero
+                        thisLabels = self.labels{k}(self.isWindowSupervised(:,k),:);
+                        features = self.getFeatures(k);
+                        
+                        % choose gradient method for appropriate classifier
+                        if isa(self.classType{k},'function_handle')
+                            thisGrad = zeros(self.L,self.W);
+                            [self.classModel{k}, gc] = self.classType{k}(thisLabels,features);
+                            thisGrad(self.dIdx,:) = gc;
+                        else
+                            switch self.classType{k}
+                                case 'svm'
+                                    thisGrad = self.svmGradient(thisLabels,features,k);
+                                case 'logistic'
+                                    thisGrad = self.logisticGradient(thisLabels,features,k);
+                                case 'multinomial'
+                                    thisGrad = self.multiGradient(thisLabels,features,k);
+                            end
                         end
+                        
+                        gradClass = gradClass + self.lambda(k)*thisGrad;
                     end
-                    
-                    gradClass = gradClass + self.lambda(k)*thisGrad;
                 end
                 
                 % if using stochastic learning, only update scores in current batch

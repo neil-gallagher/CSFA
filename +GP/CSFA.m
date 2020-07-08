@@ -560,7 +560,7 @@ classdef CSFA < handle & GP.spectrumPlots
             res = spalloc(Ns*Nc,Ns*Nc,Nc^2*Ns);
             for q = 1:self.Q
                 B = self.LMCkernels{l}.coregs.getMat(q);
-                res = res + 1/d/2*kron(spdiags(SD(:,q),0,Ns,Ns),B);
+                res = res + 1/d*kron(spdiags(SD(:,q),0,Ns,Ns),B);
             end
         end
         

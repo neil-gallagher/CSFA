@@ -207,6 +207,10 @@ classdef dCSFA < handle
             update = self.kernel.updateScores;
         end
         
+        function fBand = freqBand(self,s)
+           fBand = self.kernel.freqBand(s);
+        end
+        
         function setUpdateState(self, updateKernels, updateScores)
            self.kernel.updateKernels = updateKernels;
            self.kernel.updateScores = updateScores;
@@ -225,12 +229,13 @@ classdef dCSFA < handle
             pIdx = self.kernel.getParamIdx;
         end
         
-        function [grad, condNum] = gradient(self,s,data,inds)
+        function [grad, condNum] = gradient(self,s,data,varargin)
             % 1) obtain gradient and current kernel parameter values
             if nargin <=3
                 [grad, condNum] = self.kernel.gradient(s,data);
             else % use stochastic learning
-                [grad, condNum] = self.kernel.gradient(s,data,inds);
+                inds = varargin{1};
+                [grad, condNum] = self.kernel.gradient(s,data,inds,varargin{2:end});
             end
 
             if self.updateScores

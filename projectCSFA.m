@@ -39,6 +39,7 @@ if isequal(trainOpts.algorithm,@algorithms.noisyAdam)
 end
 trainOpts.saveInterval = trainOpts.iters + 1;
 trainOpts.stochastic = false;
+trainOpts.fStochastic = false;
 trainOpts.evalInterval = trainOpts.evalInterval2;
 trainOpts.convThresh = trainOpts.convThresh2;
 trainOpts.convClock = trainOpts.convClock2;

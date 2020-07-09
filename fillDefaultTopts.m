@@ -65,6 +65,12 @@ end
 if ~isfield(trainOpts,'batchSize')
     trainOpts.batchSize = 128;
 end
+if ~isfield(trainOpts,'fStochastic')
+    trainOpts.fStochastic = true;
+end
+if ~isfield(trainOpts,'fBatchSize')
+    trainOpts.fBatchSize = 8;
+end
 if ~isfield(trainOpts,'projectAll')
     trainOpts.projectAll = false;
 end

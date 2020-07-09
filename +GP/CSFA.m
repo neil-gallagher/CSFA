@@ -373,11 +373,17 @@ classdef CSFA < handle & GP.spectrumPlots
         %     to all parameters
         %   maxCondNum: largest condition number of UKU for all windows
         %     evaluated
-        function [grad, maxCondNum] = gradient(self,s,data,inds)
+        function [grad, maxCondNum] = gradient(self,s,data,inds,fInds)
             %global gradCheck
             modelFreqs = self.freqBand(s);
             s = s(modelFreqs);
-            Ns = numel(s); % number of frequency bins
+            
+            % handle whether or not learning is stochastic by frequency
+            if nargin < 5
+                fInds = true(size(s));
+            end
+
+            Ns = sum(fInds); % number of frequency bins
             Nc = self.C; % number of channels
             Nl = self.L; % number of latent factors
             
@@ -392,6 +398,7 @@ classdef CSFA < handle & GP.spectrumPlots
                 opts.smallFlag = false;
                 [~,UKUl] = self.LMCkernels{l}.UKU(s,opts);
                 vals = self.LMCkernels{l}.extractBlocks(UKUl);
+                vals = vals(:,:,fInds);
                 UKUlStore(:,l) = vals(:);
                 
                 % compute derivatives of parameters for each factor
@@ -409,13 +416,13 @@ classdef CSFA < handle & GP.spectrumPlots
             ngrad = 0;
             sgrad = zeros(self.L,sum(self.W));
             
-            % loop through all memory partitions (unless using sgd)
-            if nargin == 3
-                Parts = self.P;
-                stochastic = false;
-            elseif nargin == 4
+            % loop through all memory partitions (unless using sgd)    
+            if nargin > 3 && ~isempty(inds)
                 Parts = 1;
                 stochastic = true;
+            else
+                Parts = self.P;
+                stochastic = false;
             end
             for p = 1:Parts
                 
@@ -426,6 +433,8 @@ classdef CSFA < handle & GP.spectrumPlots
                     inds = ((p-1)*self.maxW+1):((p-1)*self.maxW+self.W(p));
                     y = data(modelFreqs,:,inds);
                 end
+                % if stochastic by freq
+                y = y(fInds,:,:);
                 y = conj(y);
                 theseScores = self.scores(:,inds);
                 
@@ -458,10 +467,10 @@ classdef CSFA < handle & GP.spectrumPlots
                     
                     if self.updateKernels
                         % gradient for window
-                        gradW = (Agt*BdAll).*kdAll;
+                        gradW = (Agt*BdAll).*kdAll(fInds,:);
                         gradW = sum(real(gradW),1).'; % i.e. trace
-                        thisKgrad = (s(2)-s(1)) * Ns * bsxfun(@times, theseScores(:,w)', ...
-                            reshape(gradW,[nParams,Nl]) ); % check this!
+                        thisKgrad = (s(2)-s(1)) * numel(s) * bsxfun(@times, ...
+                            theseScores(:,w)', reshape(gradW,[nParams,Nl]) );
                         
                         % add window w contribution to gradient
                         LMCgrad = LMCgrad + thisKgrad;

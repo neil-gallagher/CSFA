@@ -47,6 +47,7 @@ if isa(model, 'GP.dCSFA')
 end
 condNum = zeros(1,opts.iters);
 W = size(yAll,3);
+Ns = sum(model.freqBand(x));
 tic
 
 % load info in checkpoint file (Check that this works)
@@ -73,7 +74,13 @@ model.makeIdentifiable();
 while (iter <= opts.iters) && (convCntr < opts.convClock)
     % get gradients for and update scores first
     model.setUpdateState(false, true);
-    [g, condNum(iter)] = model.gradient(x,yAll);
+    if opts.fStochastic
+        fInds = false(1,Ns);
+        fInds(randsample(Ns, opts.fBatchSize)) = true;
+        [g, condNum(iter)] = model.gradient(x,yAll,[],fInds);
+    else
+        [g, condNum(iter)] = model.gradient(x,yAll);
+    end
     params = model.getParams();
     updateIdx = paramIdx.scores | paramIdx.noise;
     [step, algVars] = algVars.calcStep(g, algVars, updateIdx);
@@ -93,9 +100,17 @@ while (iter <= opts.iters) && (convCntr < opts.convClock)
             % use minibatch of windows to calculate gradient
             inds = randsample(W,opts.batchSize);
             y = yAll(:,:,inds);
-            [g, ~] = model.gradient(x,y,inds);
+            if opts.fStochastic
+                [g, ~] = model.gradient(x,y,inds,fInds);
+            else
+                [g, ~] = model.gradient(x,y,inds);
+            end
         else
-            [g, ~] = model.gradient(x,yAll);
+            if opts.fStochastic
+                [g, ~] = model.gradient(x,yAll,[],fInds);
+            else
+                [g, ~] = model.gradient(x,yAll);
+            end
         end
         
         params = model.getParams();

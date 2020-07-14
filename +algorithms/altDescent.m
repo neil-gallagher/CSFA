@@ -64,13 +64,13 @@ if nargin >= 6
             if isfield(cp,'sEvals'), sEvals = cp.sEvals; end
         end
     end
+else
+    model.makeIdentifiable();
 end
 
 % remember not to update kernels if set to false
 updateKernels = model.updateKernels;
-
 paramIdx = model.getParamIdx;
-model.makeIdentifiable();
 while (iter <= opts.iters) && (convCntr < opts.convClock)
     % get gradients for and update scores first
     model.setUpdateState(false, true);

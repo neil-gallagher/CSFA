@@ -38,6 +38,8 @@ classdef dCSFA < handle
                     self.S = 1;
                 end
                 
+                self.scoreNorm = cell(1,S);
+                
                 % duplicate lambda if necessary
                 if self.S>1 && numel(modelOpts.lambda)==1
                     self.lambda = repmat(modelOpts.lambda,1,self.S);
@@ -298,7 +300,7 @@ classdef dCSFA < handle
             sv = cmodel.IsSupportVector;
             % take gradient of hinge loss function
             nDFactors = sum(self.dIdx);
-            normBeta = cmodel.Beta(1:nDFactors) ./ self.scoreNorm;
+            normBeta = cmodel.Beta(1:nDFactors) ./ self.scoreNorm{sIdx};
             gradHL = sv .* (-y*normBeta');
             
             % 4) inject gradient of hinge loss into kernel gradient
@@ -320,7 +322,7 @@ classdef dCSFA < handle
             
             % remove coefficients for non-score features
             nDFactors = sum(self.dIdx);
-            normCoeffs = b(1:nDFactors)./self.scoreNorm;
+            normCoeffs = b(1:nDFactors)./self.scoreNorm{sIdx};
             
             % 3) gradient of cross-entropy loss
             [~,yHat] = predict(self.classModel{sIdx}, features');
@@ -346,7 +348,7 @@ classdef dCSFA < handle
             % 3) gradient of cross-entropy loss
             yHat = mnrval(self.classModel{sIdx},features');
             nDFactors = sum(self.dIdx);
-            normCoeffs = self.classModel{sIdx}(2:nDFactors+1,:)./self.scoreNorm;
+            normCoeffs = self.classModel{sIdx}(2:nDFactors+1,:)./self.scoreNorm{sIdx};
             gradCE = -normCoeffs*(thisLabel(:,1:end-1)' - yHat(:,1:end-1)');
             
             % 4) inject gradient of hinge loss into kernel gradient
@@ -361,9 +363,14 @@ classdef dCSFA < handle
             scores = scores(self.dIdx, wSupervised);
             
             %normalize scores by rms values
-            self.scoreNorm = sqrt(mean(scores.^2, 2));
+            self.scoreNorm{sIdx} = sqrt(mean(scores.^2, 2));
+            features = zeros(size(scores));
+            for k = 1:size(scores,1)
+                if self.scoreNorm{sIdx}(k) > 1e-6
+                    features(k,:) = scores(k,:) / self.scoreNorm{sIdx}(k);
+                end
+            end
             
-            features = bsxfun(@rdivide, scores, self.scoreNorm);
             if self.isMixed(sIdx)
                 features = [features; util.oneHot(self.group{sIdx}(wSupervised))];
             end

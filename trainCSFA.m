@@ -140,15 +140,12 @@ else
     if isfield(cp,'trainModels'), trainModels = cp.trainModels; end
     if isfield(cp,'scores'), scores = cp.scores; end
     if isfield(cp,'evals'), evals = cp.evals; end
-    if isfield(cp,'normConst')
-        xFft = bsxfun(@rdivide, xFft, cp.normConst);
-    end
 end
 
 modelOpts = fillDefaultMopts(modelOpts);
 trainOpts = fillDefaultTopts(trainOpts);
 
-if nargin<5 && trainOpts.normalizeData
+if trainOpts.normalizeData
     % normalize data to have unit power for each channel/frequency
     normConst = sqrt(mean(abs(xFft).^2,3));
     xFft = bsxfun(@rdivide, xFft, normConst);

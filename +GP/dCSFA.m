@@ -269,7 +269,7 @@ classdef dCSFA < handle
                 end
                 
                 % if using stochastic learning, only update scores in current batch
-                if nargin >=4
+                if nargin >=4 && ~isempty(inds)
                     indsMask = false(1,self.W);
                     indsMask(inds) = true;
                     gradClass(:,~indsMask) = 0;

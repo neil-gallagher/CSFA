@@ -545,18 +545,22 @@ classdef CSFA < handle & GP.spectrumPlots
         end
         
         function res = UKU(self,s,n,UKUlstore)
+            % if n is a vector, returns UKU for windows corresponding to all elements
+            % with 4th dimension iterating over windows
             s = s(self.freqBand(s));
             Ns = numel(s);
+            Nw = numel(n);
             
-            res = bsxfun(@times,1/self.eta*eye(self.C),ones([1,1,Ns]));
+            res = bsxfun(@times,1/self.eta*eye(self.C),ones([1,1,Ns,Nw]));
             if ~exist('UKUlstore','var')
                 for l = 1:self.L
-                    res = res + self.scores(l,n) * ...
-                        self.LMCkernels{l}.extractBlocks(self.UKUl(s,l));
+                    theseScores = permute(self.scores(l,n),[1,3,4,2]);
+                    res = res + bsxfun(@times, theseScores, ...
+                        self.LMCkernels{l}.extractBlocks(self.UKUl(s,l)));
                 end
             else
                 res = res + sum(bsxfun(@times,UKUlstore, ...
-                    permute(self.scores(:,n),[2,3,4,1])),4);
+                    permute(self.scores(:,n),[3,4,5,2,1])),5);
             end
         end
         

@@ -199,25 +199,29 @@ while k >= lastTrainIdx(nModels,trainOpts.projectAll)
     thisTrainModel = projectCSFA(xFft(:,:,sets.train),thisTrainModel,labels.s,trainOpts,...
         thisTrainModel.scores);
     scores(:,sets.train,k) = thisTrainModel.scores;
-    
+
     % save updated training model
     if isa(trainModels(k),'GP.CSFA')
         trainModels(k) = thisTrainModel;
     else
         trainModels(k).kernel = thisTrainModel;
     end
-    
-    holdoutModels(k) = projectCSFA(xFft(:,:,holdout),thisTrainModel,labels.s,trainOpts,...
-        initScores);
-    scores(:,holdout,k) = holdoutModels(k).scores;
-    
+
+    if sum(holdout) > 0
+        holdoutModels(k) = projectCSFA(xFft(:,:,holdout),thisTrainModel,labels.s,...
+                                       trainOpts, initScores);
+        scores(:,holdout,k) = holdoutModels(k).scores;
+
+        % initialize next model with scores from current model
+        initScores = holdoutModels(k).scores;
+    end
+
     fprintf('Projected model %d: %.1fs\n',k,toc(a))
     
     save(chkptFile,'scores','trainModels','holdoutModels','evals',...
         'modelOpts','trainOpts','sets')
     
-    % initialize next model with scores from current model
-    initScores = holdoutModels(k).scores;
+
     k = k-1;
 end
 if ~trainOpts.projectAll

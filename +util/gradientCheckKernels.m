@@ -21,7 +21,7 @@ for l = 1:L
         Kl.kernels.k{q}.mu = self.LMCkernels{l}.kernels.k{q}.mu + delta;
         
         [~,UKUlPlus] = Kl.UKU(s,opts); % get factor l Gram matrix
-        vals3 = Kl.extractBlocks(UKUlPlus);
+        vals3 = Kl.extractBlocks(UKUlPlus); vals3 = vals3(:,:,fInds);
         UKUlStorePlus = UKUlStore; UKUlStorePlus(:,l) = vals3(:);
         vals2 = sum(bsxfun(@times,UKUlStorePlus, ...
             permute(theseScores(:,w),[2,1])),2); % get nonzero values
@@ -35,7 +35,7 @@ for l = 1:L
         
         Kl.kernels.k{q}.logVar = self.LMCkernels{l}.kernels.k{q}.logVar + delta;
         [~,UKUlPlus] = Kl.UKU(s,opts); % get factor l Gram matrix
-        vals3 = Kl.extractBlocks(UKUlPlus);
+        vals3 = Kl.extractBlocks(UKUlPlus); vals3 = vals3(:,:,fInds);
         UKUlStorePlus = UKUlStore; UKUlStorePlus(:,l) = vals3(:);
         vals2 = sum(bsxfun(@times,UKUlStorePlus, ...
             permute(theseScores(:,w),[2,1])),2); % get nonzero values
@@ -50,7 +50,7 @@ for l = 1:L
         % LL w/ decrement
         Kl.kernels.k{q}.mu = self.LMCkernels{l}.kernels.k{q}.mu - delta;
         [~,UKUlMinus] = Kl.UKU(s,opts); % get factor l Gram matrix
-        vals3 = Kl.extractBlocks(UKUlMinus);
+        vals3 = Kl.extractBlocks(UKUlMinus); vals3 = vals3(:,:,fInds);
         UKUlStoreMinus = UKUlStore; UKUlStoreMinus(:,l) = vals3(:);
         vals2 = sum(bsxfun(@times,UKUlStoreMinus, ...
             permute(theseScores(:,w),[2,1])),2); % get nonzero values
@@ -64,7 +64,7 @@ for l = 1:L
         
         Kl.kernels.k{q}.logVar = self.LMCkernels{l}.kernels.k{q}.logVar - delta;
         [~,UKUlMinus] = Kl.UKU(s,opts); % get factor l Gram matrix
-        vals3 = Kl.extractBlocks(UKUlMinus);
+        vals3 = Kl.extractBlocks(UKUlMinus); vals3 = vals3(:,:,fInds);
         UKUlStoreMinus = UKUlStore; UKUlStoreMinus(:,l) = vals3(:);
         vals2 = sum(bsxfun(@times,UKUlStoreMinus, ...
             permute(theseScores(:,w),[2,1])),2); % get nonzero values

@@ -513,7 +513,7 @@ classdef CSFA < handle & GP.spectrumPlots
         function [y,scores,UKU] = sample(self,N,delta,scores)
             % set frequencies to evaluate
             Ns = ceil(N/2);
-            s = 1/(N*delta):1/(N*delta):1/(2*delta);
+            s = 1/(N*delta):1/(N*delta):Ns/(N*delta);
             
             % generate scores if necessary
             if nargin < 4
@@ -538,7 +538,11 @@ classdef CSFA < handle & GP.spectrumPlots
                 Uyri = mvnrnd(zeros(2*self.C,1),UKUnri);
                 Uy(n,:) = Uyri(1:self.C) + 1i*Uyri(self.C+1:end);
             end
-            y = real(ifft([Uy; flipud(Uy)]));
+            if mod(N,2) == 0
+                y = real(ifft([Uy; flipud(Uy)]));
+            else
+                y = real(ifft([Uy(1:end-1,:); flipud(Uy)]));
+            end
         end
         
         function plotCsd(self,n,varargin)

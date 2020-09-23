@@ -1,108 +1,163 @@
 function trainCSFA(loadFile,saveFile,modelOpts,trainOpts,chkptFile)
 % trainCSFA
-%   Trains a cross-spectral factor analysis (CSFA) model of the given LFP data.
-%   Generally, the data are given as averaged signal over each recording area,
-%   divided into time windows. Learns a set of factors that describe the dataset
-%   well, and models each window as a linear sum of contributions from each
-%   factor. The model can be combined with supervised classifier in order to
-%   force a set of the factors to be predictive of desired sid information. Run
-%   the saveTrainRuns function after this to consolidate training results into
-%   one file. For more details on the model refer to the following publication:
+%   Trains a cross-spectral factor analysis (CSFA) model of the given 
+%   multi-channel timeseries data, which should already be divided into
+%   time windows. Models each window as a linear sum of contributions from
+%   learned factors. The model can be combined with supervised classifier
+%   in order to force a set of the factors to be predictive of desired
+%   side information. Run the saveTrainRuns function after this to
+%   consolidate training results into one file. For more details on the
+%   model refer to the following publication:
 %   N. Gallagher, K.R. Ulrich, A. Talbot, K. Dzirasa, L. Carin, and D.E. Carlson,
 %     "Cross-Spectral Factor Analysis", Advances in Neural Information
 %     Processing Systems 30, pp. 6845-6855, 2017.
+%
 %   INPUTS
-%   loadFile: path to '.mat' file containing preprocessed data. Must contain
-%        variables named xFft and labels variables, described below.
+%   loadFile: path to '.mat' file containing preprocessed data.
+%       MUST CONTAIN THE FOLLOWING VARIABLES
+%       xFft: fourier transform of preprocessed data. NxAxW array. A is
+%           the # of areas. N=number of frequency points per
+%           window. W=number of time windows.
+%       labels: Structure containing labeling infomation for data
+%           FIELDS
+%           s: frequency space (Hz) labels of fourier transformed data
+%           windows: a sub-structure containing any window-specific labels
+%               that might need to be used during during training. Every
+%               field in this substructure should be an array of length W;
+%               W=number of time windows. As an example, if your dataset
+%               contains recording from multiple different mice, you would
+%               include an cell array of strings in labels.windows.mouse
+%               giving the ID of the mouse associated with each window.
 %   saveFile: path to '.mat' file to which the CSFA model will
 %       ultimately be saved. If you wish to control the division of
 %       data into train/validation/test sets, this file should be
-%       already initialized with a sets variable, described below.
-%       All models saved to this file should have the same validation sets.
+%       already initialized with a sets variable, described below. If the
+%       sets variable is not included, the default will be to randomly
+%       assign 20% of the windows to a holdout test set and train on the
+%       remaining 80%. All models saved to this file should have the same 
+%       test/validation sets.
+%       OPTIONAL VARIABLE
+%       sets: structure containing train/validation set labels.
+%           FIELDS
+%           train: logical vector indicating windows in xFft to be used
+%               in training set
+%           val: (optional) logical vector indicating window to be used in
+%               validation
+%           datafile: path to file containing data used to train model
+%           test: (optional) logical vector indicating windows for
+%               testing
+%           description: (optional) describes validation set scheme
 %   modelOpts: (optional) Indicates  parameters of the CSFA model. All
 %       non-optional fields not included in the structure passed in will be
 %       filled with a default value.
 %       FIELDS
-%       discrimModel: string indicating the supervised classifier, if any,
-%           that is combined with the CSFA model. options are
-%           'none','svm','logistic', or 'multinomial'. Default: 'none'
 %       L: number of factors. Default: 10
 %       Q: number of spectral gaussian components per factor. Default: 3
 %       R: rank of coregionalization matrix. Default: 2
-%       eta: precision of additive gaussian noise. Default: 5
+%       eta: assumed precision of additive Gaussian noise. Default: 5
 %       lowFreq: lower bound on spectral frequencies incorporated in the model.
 %           Default: 1
 %       highFreq: upper bound on spectral frequencies incorporated in the model.
 %           Default: 50
+%       learnNoise: boolean indicating whether to use gradient-based
+%           learning to optimize the precision parameter of the additive
+%           Gaussian noise in the model. Only recommended if
+%           trainOpts.normalizeData is set to true. Default: false
+%       regB: weight of the L1 regularization penalty on the
+%           coregionalization matrix B. Default: 100
 %       description: (optional) string description of model
 %       kernel: (optional) CSFA model object to initialize new model for
 %           training
+%       discrimModel: string indicating the supervised classifier, if any,
+%           that is combined with the CSFA model. You can also specify
+%           multiple supervised classifiers with a cell array of strings.
+%           Options are 'none','svm','logistic', or 'multinomial'. 
+%           Default: 'none'
 %       (The following are used if discrimModel is set to anything
 %       other than 'none')
-%       lambda: scalar ratio of the 'weight' on the classifier loss
-%           objective compared to the CSFA model likelihood objective
 %       target: string indicating the field of labels.windows to be used as
-%           the target variable to be explained by the classifier
-%       dIdx: boolean vector of indicies for discriminitive
-%           factors
-%       mixed: (optional) boolean indicating whether to have mixed intercept
-%           model for multiple groups
-%       group: Only needed if mixed is set to 'true'. String indicating the
-%           field of labels.windows to be used as the group variable for a
-%           mixed intercept model
-%   trainOpts: (optional) structure of options for the learning algorithm. All
-%       non-optional fields not included in the structure passed in will be
-%       filled with a default value. See the fillDefaultTopts function for
-%       default values.
+%           the target variable for the classifier. For example,
+%           modelOpts.target = 'mouse' indicates that the classifier should
+%           predict the value of labels.windows.mouse. There is no default
+%           value, so if discrimModel is not 'none' you must set this.
+%       lambda: scalar ratio of the 'weight' on the classifier loss
+%           objective compared to the CSFA model likelihood objective. If
+%           using multiple classifiers, each can be given a different
+%           weight by setting lambda to a vector of ratios corresponding to
+%           each classifier. Default: 100
+%       dIdx: integer or boolean vector. If an integer, it indicates the
+%           number of factors which will be incorporated into the
+%           supervised classifier(s). If a boolean vector, it indicates
+%           the specific factors that you would like used in the
+%           classifier(s). If there are multiple classifiers, they all
+%           use the same factors for prediction. Default: 1
+%       supervisedWindows: string indicating which windows should be used
+%           to train the classifier. The string should indicate a boolean
+%           vector in labels.windows that will selected the desired
+%           windows. Alternatively, the string 'all' will select all
+%           windows for the classifier. If using multiple classifiers, a
+%           cell array of strings can be given to train each classifier on
+%           a different set of windows. Default: 'all'
+%       balance: string indicating the groups that you would like to
+%           balance your classifier observations with respect to. 
+%           For example: 'mouse' would indicate that the classifier cost
+%           function should be adjusted so that the observations from each
+%           mouse indicated in labels.windows.mouse are weighted evenly.
+%           Set to false if you do not want to balance observations in the
+%           classifier. Multinomial models cannot be used with balanced
+%           observations.
+%       group: (optional) If set, then the classifier will used a 
+%           mixed intercept. In that case, this should be set to a string
+%           indicating the field of labels.windows to be used as the group
+%           variable for the mixed intercept model. If using multiple
+%           classifiers, a cell array of strings can be given to indicate a
+%           different set of groups for each classifier. To not use a mixed
+%           intercept model for a specific classifier, set that entry in
+%           the array to 'all'.
+%   trainOpts: (optional) structure of options for the training algorithm. All
+%       fields not included in the structure passed in will be
+%       filled with a default value.
 %       FIELDS
-%       iters: maximum number of training iterations
-%       evalInterval(2): interval at which to evaluate objective. evalInterval2
-%           controls the interval for score learning
-%           following initial kernel learning.
+%       iters: maximum number of training iterations. Default: 1000
+%       evalInterval: interval at which to evaluate objective and print
+%           feedback during initial training. Default: 20
+%       evalInterval2: same as above, but for second training stage where
+%           CSFA kernel parameters are fixed and only scores are optimized.
+%           Default: 20
 %       saveInterval: interval at which to save intermediate models during
-%           training.
-%       convThresh(2), convClock(2): convergence criterion parameters. training
+%           training. Default: 100
+%       convThresh, convClock: convergence criterion parameters. training
 %           stops if the objective function does not
 %           increase by a value of at least (convThresh) after (convClock)
 %           evaluations of the objective function. convThresh2 and
-%           convClock2 correspond to score learning following kernel
-%           learning.
+%           convClock2 correspond to score learning after the kernel
+%           parameters are fixed.
+%           convThresh Default: 10; convClock Default: 5
 %       algorithm: function handle to the desired gradient descent
 %           algorithm for model learning. Stored in +algorithms/
-%           Example: [evals,trainModels] = trainOpts.algorithm(labels.s,...
-%                          xFft(:,:,sets.train),model,trainOpts,chkptFile);
-%       stochastic: boolean indicating to train using mini-batches
+%           Default: @algorithms.rprop
+%       stochastic: boolean indicating to train using mini-batches.
+%           Default: true
 %       batchSize: (only used if stochastic = true) mini-batch size
-%           for stochastic algorithms
-%       projAll: boolean. If false, only learns scores from the final model
-%           (obtained after all training iterations), rather than for each
-%           intermediate model as well.
+%           for stochastic algorithms. Defualt: 128
+%       fStochastic: boolean indicating whether to calculate training
+%           gradients based on a random subset of frequencies at each
+%           iteration. Default: true
+%       fBatchSize: (only used if fStochastic = true) number of randomly
+%           selected frequencies used for gradient evaluation. Default: 8
+%       normalizeData: boolean indicating whether to normalize each
+%           channel/frequency pair in the data to have the same variance
+%           before training. Default: true
+%       projectAll: boolean. If false, only finishes optimizing scores
+%           from the final model (obtained after all training iterations),
+%           rather than for each intermediate saved model as well.
+%           Default: false
 %   chkptFile: (optional) path of a file containing checkpoint information
 %       for training to start from. For use if training had to be terminated
 %       before completion.
-%   LOADED VARIABLES
-%   (from loadFile)
-%   xFft: fourier transform of preprocessed data. NxAxW array. A is
-%       the # of areas. N=number of frequency points per
-%       window. W=number of time windows.
-%   labels: Structure containing labeling infomation for data
-%       FIELDS
-%       s: frequency space (Hz) labels of fourier transformed data
-%   (optionally loaded from saveFile)
-%   sets: structure containing
-%       train/validation set labels.
-%       FIELDS
-%       train: logical vector indicating windows in xFft to be used
-%           in training set
-%       val: (optional) logical vector indicating window to be used in
-%           validation
-%       datafile: path to file containing data used to train model
-%       test: (optional) logical vector indicating windows for
-%           testing
-%       description: (optional) describes validation set scheme
 %
-% Example1: TrainCSFA('data/dataStore.mat','data/modelFile.mat',mOpts,tOpts)
-% Example2: TrainCSFA('data/dataStore.mat','data/Mhold.mat',[],[],'data/chkpt_81LNf_Mhold.mat')
+% Example 1: TrainCSFA('data/dataStore.mat','data/modelFile.mat',mOpts,tOpts)
+% Example 2: TrainCSFA('data/dataStore.mat','data/Mhold.mat',[],[],'data/chkpt_81LNf_Mhold.mat')
 
 % Add .mat extension if filenames don't already include them
 saveFile = addExt(saveFile);
@@ -251,16 +306,18 @@ else
 end
 end
 
-function labelArr = compileLabels(id, labels, trainIdx)
+function labelArr = compileLabels(id, labels, setIdx)
+% compiles an array of labels that can be used in training from the full
+% set of labels
 id = toCell(id);
 
 K = length(id);
 labelArr = cell(1,K);
 for k = 1:K
     if strcmp(id{k}, 'all')
-        labelArr{k} = ones(sum(trainIdx),1);
+        labelArr{k} = ones(sum(setIdx),1);
     else
-        labelArr{k} = labels.windows.(id{k})(trainIdx);
+        labelArr{k} = labels.windows.(id{k})(setIdx);
     
         %make sure labels are column vectors
         if size(labelArr{k},2) > size(labelArr{k},1)
@@ -293,7 +350,6 @@ if ~strcmp(modelOpts.discrimModel{1},'none')
         for t = 1:T
             % get mouse, target, and group labels to be used by each classifier
             thisIdx = modelOpts.isWindowSupervised(:,t);
-            thisM = labels.windows.mouse(sets.train); thisM = thisM(thisIdx);
             thisT = targetLabel{t}(thisIdx);
             
             % generate list of groups to recursively balance data over
@@ -303,7 +359,7 @@ if ~strcmp(modelOpts.discrimModel{1},'none')
                 thisG = thisG(thisIdx);
                 balanceGroups = [balanceGroups, {thisG}];
             end
-            balanceGroups = [{thisT}, balanceGroups, {thisM}];
+            balanceGroups = [{thisT}, balanceGroups];
             
             if numel(unique(thisT)) > 2
                 warning('Multinomial classifier will not handle observations weights for balancing')
@@ -365,17 +421,36 @@ if ~isfield(modelOpts,'highFreq'), modelOpts.highFreq = 50; end
 if ~isfield(modelOpts,'maxW')
     modelOpts.maxW = min(modelOpts.W,1e4);
 end
-if ~isfield(modelOpts,'learnNoise'), modelOpts.learnNoise = true; end
+if ~isfield(modelOpts,'learnNoise'), modelOpts.learnNoise = false; end
 if ~isfield(modelOpts,'regB'), modelOpts.regB = 100; end
 if ~isfield(modelOpts,'discrimModel'), modelOpts.discrimModel = 'none'; end
 
 if ~strcmp(modelOpts.discrimModel, 'none')
 % set default dCSFA parameters
-   if ~isfield(modelOpts,'lambda'), modelOpts.lambda = 1e3; end
+   if ~isfield(modelOpts,'lambda'), modelOpts.lambda = 1e2; end
    if ~isfield(modelOpts,'dIdx'), modelOpts.dIdx = 1; end
    if ~isfield(modelOpts,'supervisedWindows'), modelOpts.supervisedWindows = 'all'; end
    if ~isfield(modelOpts,'balance'), modelOpts.balance = false; end
 end
+end
+
+function tOpts = fillDefaultTopts(tOpts)
+% fill in default training options
+if ~isfield(tOpts,'iters'), tOpts.iters = 1000; end
+if ~isfield(tOpts,'saveInterval'), tOpts.saveInterval = 100; end
+if ~isfield(tOpts,'evalInterval'), tOpts.evalInterval = 20; end
+if ~isfield(tOpts,'evalInterval2'), tOpts.evalInterval2 = tOpts.evalInterval; end
+if ~isfield(tOpts,'convThresh'), tOpts.convThresh = 10; end
+if ~isfield(tOpts,'convThresh2'), tOpts.convThresh2 = tOpts.convThresh; end
+if ~isfield(tOpts,'convClock'), tOpts.convClock = 5; end
+if ~isfield(tOpts,'convClock2'), tOpts.convClock2 = tOpts.convClock; end
+if ~isfield(tOpts,'algorithm'), tOpts.algorithm = @algorithms.rprop; end
+if ~isfield(tOpts,'stochastic'), tOpts.stochastic = true; end
+if ~isfield(tOpts,'batchSize'), tOpts.batchSize = 128; end
+if ~isfield(tOpts,'fStochastic'), tOpts.fStochastic = true; end
+if ~isfield(tOpts,'fBatchSize'), tOpts.fBatchSize = 8; end
+if ~isfield(tOpts,'projectAll'), tOpts.projectAll = false; end
+if ~isfield(tOpts,'normalizeData'), tOpts.normalizeData = true; end
 end
 
 function filename = addExt(filename)

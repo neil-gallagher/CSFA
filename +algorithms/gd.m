@@ -22,16 +22,16 @@ function [evals,trainModels] = gd(x,y,model,opts,chkptfile)
 %    trainModels - intermediate models saved during training
 LEARN_RATE = 1e-6;
 
-algVars.calcStep = @(g,av) calcStep(g,av,LEARN_RATE);
+algVars.calcStep = @(g,av,mask) calcStep(g,av,LEARN_RATE,mask);
 
 if nargin > 4
-    [evals,trainModels] = algorithms.descent(x,y,model,opts,algVars,chkptfile);
+    [evals,trainModels] = algorithms.altDescent(x,y,model,opts,algVars,chkptfile);
 else
-    [evals,trainModels] = algorithms.descent(x,y,model,opts,algVars);
+    [evals,trainModels] = algorithms.altDescent(x,y,model,opts,algVars);
 end
 
 end
 
-function [step,a] = calcStep(g,a,learnRate)
+function [step,a] = calcStep(g,a,learnRate,~)
 step = g*learnRate;
 end

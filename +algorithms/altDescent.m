@@ -1,4 +1,4 @@
-function [evals,trainModels] = descent(x,yAll,model,opts,algVars,chkptfile)
+function [evals,trainModels] = altDescent(x,yAll,model,opts,algVars,chkptfile)
 % descent : general gradient descent (ascent)
 % Inputs
 %    x - function inputs (e.g. frequencies)
@@ -41,8 +41,13 @@ trainModels(nModelSaves) = model;
 saveIdx = 1;
 
 evals = zeros(1,opts.iters);
+rEvals = zeros(1,opts.iters);
+if isa(model, 'GP.dCSFA')
+    sEvals = zeros(opts.iters, model.S);
+end
 condNum = zeros(1,opts.iters);
 W = size(yAll,3);
+Ns = sum(model.freqBand(x));
 tic
 
 % load info in checkpoint file (Check that this works)
@@ -54,57 +59,110 @@ if nargin >= 6
         iter = cp.trainIter;
         if isfield(cp,'trainModels'), trainModels = cp.trainModels; end
         if isfield(cp,'evals'), evals = cp.evals; end
+        if isfield(cp,'rEvals'), rEvals = cp.rEvals; end
+        if isa(model, 'GP.dCSFA')
+            if isfield(cp,'sEvals'), sEvals = cp.sEvals; end
+        end
     end
+else
+    model.makeIdentifiable();
 end
 
-model.makeIdentifiable();
+% remember not to update kernels if set to false
+updateKernels = model.updateKernels;
+paramIdx = model.getParamIdx;
 while (iter <= opts.iters) && (convCntr < opts.convClock)
-    params = model.getParams();
-    
-    % calculate gradient for this iteration
-    if opts.stochastic
-        inds = randsample(W,opts.batchSize);
-        y = yAll(:,:,inds);
-        [g, condNum(iter)] = model.gradient(x,y,inds);
+    % get gradients for and update scores first
+    model.setUpdateState(false, true);
+    if opts.fStochastic
+        fInds = false(1,Ns);
+        fInds(randsample(Ns, opts.fBatchSize)) = true;
+        [g, condNum(iter)] = model.gradient(x,yAll,[],fInds);
     else
         [g, condNum(iter)] = model.gradient(x,yAll);
     end
+    params = model.getParams();
+    updateIdx = paramIdx.scores | paramIdx.noise;
+    [step, algVars] = algVars.calcStep(g, algVars, updateIdx);
+    pNew = params + step;
+    model.setParams(pNew);
     
     if condNum(iter) > 1e6
         warning(['Condition number on covariance matrix is %.3e. Gradient ' ...
             'calculation are likely incorrect.'],condNum(iter))
     end
-    
-    [step, algVars] = algVars.calcStep(g,algVars);
-    
-    % take step
-    pNew = params + step;
-    
-    % Update parameters
-    model.setParams(pNew);
-    pNew = model.getParams;
+
+    if updateKernels
+        % get gradients for and update kernel parameters
+        model.setUpdateState(true,false)
+
+        if opts.stochastic
+            % use minibatch of windows to calculate gradient
+            inds = randsample(W,opts.batchSize);
+            y = yAll(:,:,inds);
+            if opts.fStochastic
+                [g, ~] = model.gradient(x,y,inds,fInds);
+            else
+                [g, ~] = model.gradient(x,y,inds);
+            end
+        else
+            if opts.fStochastic
+                [g, ~] = model.gradient(x,yAll,[],fInds);
+            else
+                [g, ~] = model.gradient(x,yAll);
+            end
+        end
+        
+        params = model.getParams();
+        updateIdx = ~paramIdx.scores;
+        [step, algVars] = algVars.calcStep(g, algVars, updateIdx);
+        pNew = params + step;
+        model.setParams(pNew);
+    end
+    model.setUpdateState(updateKernels,true);
     
     % occasionally check performance
     if mod(iter,opts.evalInterval)==0
-        thisEval = model.evaluate(x,yAll)/W;
-        evals(iter) = thisEval;
+        if isa(model, 'GP.dCSFA')
+            [llEval, rLoss, cLoss] = model.evaluate(x,yAll);
+            sEvals(iter,:) = cLoss;
+            totalEval = llEval - cLoss*model.lambda' - rLoss*model.kernel.regB;
+        else
+            [llEval, rLoss] = model.evaluate(x,yAll);
+            totalEval = llEval - rLoss*model.regB;
+        end
+        evals(iter) = llEval;
+        rEvals(iter) = rLoss;
+            
         if opts.stochastic
             winsComplete = iter*opts.batchSize;
-            fprintf(['Iter #%5d/%d - %.1f Epochs Completed - Time:%4.1fs - Avg. LL:%4.4g' ...
-                ' - Max Cond. #: %.3g\n'], iter, opts.iters, winsComplete/W, ...
-                toc, thisEval, condNum(iter));
+            fprintf(['Iter #%5d/%d - %.1f Epochs Completed - Time:%4.1fs - LL:%4.4g - '...
+                'Max Cond. #: %.3g'], iter, opts.iters, winsComplete/W, ...
+                toc, llEval, condNum(iter))
         else
-            fprintf('Iter #%5d/%d - Time:%4.1fs - Avg. LL:%4.4g - Max Cond. #: %.3g\n',...
-                iter, opts.iters, toc, thisEval, condNum(iter));
+            fprintf('Iter #%5d/%d - Time:%4.1fs - LL:%4.4g - Max Cond. #: %.3g',...
+                iter, opts.iters, toc, llEval, condNum(iter))
         end
+        if isa(model, 'GP.dCSFA')
+            fprintf(' - Sup. Loss:%4.4g', cLoss)
+        end
+        if updateKernels
+           fprintf(' - Reg. Loss:%4.4g', rLoss) 
+        end
+        fprintf('\n')
+        
         if nargin >= 6
             cp.evals = evals;
+            cp.rEvals = rEvals;
+            if isa(model, 'GP.dCSFA')
+                cp.sEvals = sEvals;
+            end
         end
         
         % convergence check
-        if thisEval > maxEval + opts.convThresh
+        if totalEval > maxEval + opts.convThresh
             convCntr = 0;
-            maxEval = thisEval;
+            maxEval = totalEval;
         else
             convCntr = convCntr + 1;
         end
@@ -124,7 +182,7 @@ while (iter <= opts.iters) && (convCntr < opts.convClock)
     
     % save info back to checkpoint file
     if nargin >= 6
-        cp.params = pNew; cp.algVars = algVars;
+        cp.params = model.getParams(); cp.algVars = algVars;
         cp.trainIter = iter+1;
         save(chkptfile,'-struct','cp')
     end
@@ -136,9 +194,21 @@ iter = iter - 1;
 if isfinite(iter)
     % save final results if necessary
     if mod(iter,opts.evalInterval)~=0
-        evals(iter) = model.evaluate(x,yAll)/W;
+        if isa(model, 'GP.dCSFA')
+            [llEval, rLoss, cLoss] = model.evaluate(x,yAll);
+            sEvals(iter,:) = cLoss;
+        else
+            [llEval, rLoss] = model.evaluate(x,yAll);
+        end
+        evals(iter) = llEval;
+        rEvals(iter) = rLoss;
+        
         if nargin >= 6
             cp.evals = evals;
+            cp.rEvals = rEvals;
+            if isa(model, 'GP.dCSFA')
+                cp.sEvals = sEvals;
+            end
         end
     end
     if mod(iter,opts.saveInterval)~=0
@@ -150,7 +220,7 @@ if isfinite(iter)
         end
     end
     if nargin >= 6
-        cp.params = params;
+        cp.params = model.getParams();
         cp.trainIter = Inf;
         save(chkptfile,'-struct','cp')
     end

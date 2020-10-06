@@ -14,15 +14,17 @@ function modelRefit = projectCSFA(xFft,origModel,s,trainOpts,initScores)
 %       filled with a default value. See the fillDefaultTopts function for
 %       default values.
 %     FIELDS
-%     iters: maximum number of training iterations
-%     evalInterval: interval at which to evaluate objective.
-%     convThresh, convClock: convergence criterion parameters. training stops if
-%         the objective function does not increase by 'convThresh' after
-%         'convClock' evaluations of the objective function.
-%     algorithm: function handle to the desired gradient descent
-%         algorithm for model learning.
-%         Example: [evals,trainModels] = trainOpts.algorithm(labels.s,...
-%                        xFft(:,:,sets.train),model,trainOpts,chkptFile);
+%       iters: maximum number of training iterations. Default: 1000
+%       evalInterval2: interval at which to evaluate objective and print
+%           feedback during initial training. Default: 20
+%       convThresh2, convClock2: convergence criterion parameters. training
+%           stops if the objective function does not increase
+%           by a value of at least (convThresh2) after (convClock2)
+%           evaluations of the objective function.
+%           convThresh2 Default: 10; convClock2 Default: 5
+%       algorithm: function handle to the desired gradient descent
+%           algorithm for model learning. Stored in +algorithms/
+%           Default: @algorithms.rprop
 %   initScores: (optional) LxW of scores to initialize
 %     projection. L = number of factors. W = last dimension of
 %     xFft. NaN entries in initScores will be replaced with a
@@ -39,6 +41,7 @@ if isequal(trainOpts.algorithm,@algorithms.noisyAdam)
 end
 trainOpts.saveInterval = trainOpts.iters + 1;
 trainOpts.stochastic = false;
+trainOpts.fStochastic = false;
 trainOpts.evalInterval = trainOpts.evalInterval2;
 trainOpts.convThresh = trainOpts.convThresh2;
 trainOpts.convClock = trainOpts.convClock2;
@@ -46,6 +49,8 @@ trainOpts.convClock = trainOpts.convClock2;
 % initialize new model
 modelRefit = origModel.copy();
 modelRefit.updateKernels = false;
+modelRefit.updateNoise = false;
+modelRefit.regB = 0;
 W = size(xFft,3);
 maxW = min(origModel.maxW,W);
 modelRefit.setPartitions(W, maxW);
@@ -60,4 +65,13 @@ end
 
 % project new data onto factors
 trainOpts.algorithm(s,xFft,modelRefit,trainOpts);
+end
+
+function tOpts = fillDefaultTopts(tOpts)
+% fill in default training options
+if ~isfield(tOpts,'iters'), tOpts.iters = 1000; end
+if ~isfield(tOpts,'evalInterval2'), tOpts.evalInterval = 20; end
+if ~isfield(tOpts,'convThresh2'), tOpts.convThresh = 10; end
+if ~isfield(tOpts,'convClock2'), tOpts.convClock = 5; end
+if ~isfield(tOpts,'algorithm'), tOpts.algorithm = @algorithms.rprop; end
 end

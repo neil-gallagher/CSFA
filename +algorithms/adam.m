@@ -28,22 +28,22 @@ LEARN_RATE = 1e-2;
 nParams = numel(model.getParams);
 algVars.moment1 = zeros(nParams,1);
 algVars.moment2 = zeros(nParams,1);
-algVars.iter = 1;
-algVars.calcStep = @(g,av) calcStep(g,av,BETA1,BETA2,EPS,LEARN_RATE);
+algVars.iter = ones(nParams,1);
+algVars.calcStep = @(g,av,idx) calcStep(g,av,BETA1,BETA2,EPS,LEARN_RATE,idx);
 
 if nargin > 4
-    [evals,trainModels] = algorithms.descent(x,yAll,model,opts,algVars,chkptfile);
+    [evals,trainModels] = algorithms.altDescent(x,yAll,model,opts,algVars,chkptfile);
 else
-    [evals,trainModels] = algorithms.descent(x,yAll,model,opts,algVars);
+    [evals,trainModels] = algorithms.altDescent(x,yAll,model,opts,algVars);
 end
 end
 
-function [step, av] = calcStep(g,av,beta1,beta2,eps,learnRate)
-av.moment1 = beta1*av.moment1 + (1-beta1)*g;
-av.moment2 = beta2*av.moment2 + (1-beta2)*g.^2;
-adjM1 = av.moment1./(1-beta1.^av.iter);
-adjM2 = av.moment2./(1-beta2.^av.iter);
+function [step, av] = calcStep(g,av,beta1,beta2,eps,learnRate,updateIdx)
+av.moment1(updateIdx) = beta1*av.moment1(updateIdx) + (1-beta1)*g;
+av.moment2(updateIdx) = beta2*av.moment2(updateIdx) + (1-beta2)*g.^2;
+adjM1 = av.moment1(updateIdx)./(1-beta1.^av.iter(updateIdx));
+adjM2 = av.moment2(updateIdx)./(1-beta2.^av.iter(updateIdx));
 step = adjM1./(eps + sqrt(adjM2));
 step = learnRate*step;
-av.iter = av.iter + 1;
+av.iter(updateIdx) = av.iter(updateIdx) + 1;
 end

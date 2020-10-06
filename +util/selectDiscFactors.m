@@ -1,4 +1,4 @@
-function [selection,p] = selectDiscFactors(numFactors,target,scores)
+function [selection, sortingIndices] = selectDiscFactors(numFactors, target, scores, superMask)
 % Select Discriminatory Factors
 % This takes the CSFA generative model created in
 % trainCSFA and finds the factors with the most
@@ -13,32 +13,49 @@ function [selection,p] = selectDiscFactors(numFactors,target,scores)
 
 L = size(scores,1);
 
-if isa(target, 'cell')
-    target = categorical(target);
-end
+T = numel(target);
 
-% get unique identifiers for all classes. consider binary case as one class
-uniqueClasses = unique(target);
-C = numel(uniqueClasses);
-if C == 2
-    uniqueClasses = uniqueClasses(2);
-    C = 1;
-end
-
-% for each class, rank factors based on rank-sum p values
-p = zeros(L,C);
-for c = 1:C
-    thisClassLabel = target == uniqueClasses(c);
-    
-    for s = 1:L
-        p(s, c) = ranksum(scores(s, thisClassLabel), scores(s, ~thisClassLabel));
+% get weighted average log p-value over all classifiers and class values
+classVotes = zeros(L,T);
+for t = 1:T
+    if isa(target{t}, 'cell')
+        thisTarget = categorical(target{t});
+    else
+        thisTarget = target{t};
     end
+    supervisedWindows = superMask(:,t);
+    
+    % get unique identifiers for all classes. consider binary case as one class
+    uniqueClasses = unique(thisTarget);
+    C = numel(uniqueClasses);
+    if C == 2
+        uniqueClasses = uniqueClasses(2);
+        C = 1;
+    end
+    
+    % for each class, rank factors based on t-test p values
+    p = zeros(L,C);
+    for c = 1:C
+        thisClassLabel = thisTarget == uniqueClasses(c);
+        
+        for s = 1:L
+            posScores = scores(s, thisClassLabel & supervisedWindows);
+            negScores = scores(s, (~thisClassLabel) & supervisedWindows);
+            [~, thisP] = ttest2(posScores, negScores);
+            p(s, c) = thisP;
+        end
+    end
+    
+    % break ties by vote 'importance' for this classifier and by classifier
+    % order
+    avgLogP = mean(log(p),2,'omitnan');
+    [~,sortingIndices] = sort(avgLogP,'ascend');
+    indx = sortingIndices(1:numFactors);
+    classVotes(indx,t) = 1 + 1e-3*(1./(1:numFactors)) + 1e-6*(1./t);
 end
 
-avgLogP = mean(log(p),2,'omitnan');
-[~,sortingIndices] = sort(avgLogP,'ascend');
+[~,sortingIndices] = sort(sum(classVotes,2), 'descend');
 indx = sortingIndices(1:numFactors);
 selection = false(L,1);
 selection(indx) = true;
-
 end
